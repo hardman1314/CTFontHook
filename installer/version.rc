@@ -3,6 +3,10 @@
 // 版本号与仓库根目录 VERSION（0.1.0）保持同步。
 
 #include <windows.h>
+#include "resource.h"
+
+// 应用图标：EXE 文件图标（资源管理器/桌面显示）与窗口图标共用。
+IDI_APPICON ICON "app.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION     0,1,0,0

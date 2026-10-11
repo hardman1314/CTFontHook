@@ -27,7 +27,7 @@
 
 namespace {
 
-const wchar_t* kAppTitle = L"CTFontHook 安装器";
+const wchar_t* kAppTitle = L"时汐字体器 · 安装器";
 const wchar_t* kWndClass = L"CTFontHookSetupWnd";
 const wchar_t* kBakDirName = L".CTFontHook";
 const wchar_t* kManifestName = L"manifest.ini";
@@ -43,12 +43,79 @@ std::wstring g_selectedExe;
 
 // 界面尺寸以 96 DPI 为设计单位，实际像素经 S() 按系统 DPI 放大，
 // 避免高分屏上字体放大而固定像素布局导致提示文字被裁剪。
-const int kClientW = 760;
-const int kClientH = 626;
+const int kClientW = 780;
+const int kClientH = 664;
 
 int g_dpi = 96;
 int S(int px) { return MulDiv(px, g_dpi, 96); }
 HFONT g_uiFont = nullptr;
+HFONT g_titleFont = nullptr;
+HBRUSH g_bgBrush = nullptr;      // 窗口底色刷（静态文本背景）
+HBRUSH g_whiteBrush = nullptr;   // 卡片 / 列表 / 输入框底色刷
+HICON g_appIcon = nullptr;       // 窗口图标（大）
+HICON g_appIconSm = nullptr;     // 窗口图标（小）
+
+// ---------------------------------------------------------------------------
+// 浅色主题调色板：与「字体选择器」深色主题相反——同一套设计语言，明暗对调。
+// ---------------------------------------------------------------------------
+const COLORREF COL_WINDOW_BG  = RGB(0xF4, 0xF6, 0xFA); // 窗口底
+const COLORREF COL_PANEL_BG   = RGB(0xFF, 0xFF, 0xFF); // 卡片 / 列表 / 输入框底
+const COLORREF COL_HEADER_BG  = RGB(0xEE, 0xF3, 0xFA); // 列表表头底
+const COLORREF COL_BORDER     = RGB(0xD5, 0xDC, 0xE6); // 描边
+const COLORREF COL_ACCENT     = RGB(0x3D, 0x6F, 0xC4); // 主强调（安装）
+const COLORREF COL_ACCENT_HOV = RGB(0x33, 0x60, 0xAE);
+const COLORREF COL_ACCENT_PSD = RGB(0x2A, 0x50, 0x93);
+const COLORREF COL_WARN       = RGB(0xC4, 0x52, 0x3D); // 警示（卸载 / 还原）
+const COLORREF COL_WARN_HOV   = RGB(0xAC, 0x44, 0x31);
+const COLORREF COL_WARN_PSD   = RGB(0x93, 0x39, 0x29);
+const COLORREF COL_TEXT       = RGB(0x1F, 0x27, 0x33); // 主文字
+const COLORREF COL_TEXT_DIM   = RGB(0x5F, 0x6B, 0x7D); // 次文字
+const COLORREF COL_TEXT_HINT  = RGB(0x8A, 0x93, 0xA3); // 提示
+const COLORREF COL_BTN_BG     = RGB(0xEC, 0xF1, 0xF8); // 次级按钮底
+const COLORREF COL_BTN_HOV    = RGB(0xDF, 0xE7, 0xF2);
+const COLORREF COL_BTN_PSD    = RGB(0xD2, 0xDD, 0xEC);
+const COLORREF COL_OK         = RGB(0x2E, 0x8B, 0x62); // 「已安装」状态
+const COLORREF COL_LIST_SEL   = RGB(0xDC, 0xE8, 0xFA); // 列表选中行底
+
+// 版式基准（96 DPI 设计单位，实际像素经 S() 放大）
+const int LY_ROW1_Y      = 70;   // 「游戏程序」行
+const int LY_INSTALL_Y   = 110;  // 「安装到游戏」按钮行
+const int LY_LISTLABEL_Y = 154;  // 「已登记的游戏」标签
+const int LY_LIST_TOP    = 176;  // 列表
+const int LY_LIST_H      = 224;
+const int LY_BTN_Y       = 410;  // 列表下方按钮行
+const int LY_BTN_H       = 34;
+const int LY_LOGLABEL_Y  = 456;  // 「操作日志」标签
+
+// 自绘按钮悬停状态（索引 = 控件 ID；IDC_* 均 < 2048）。
+bool g_btnHot[2048] = {};
+bool g_btnTrack[2048] = {};
+
+void FillRoundRectDc(HDC dc, const RECT& r, int rad, COLORREF fill, COLORREF border) {
+    HBRUSH br = CreateSolidBrush(fill);
+    HPEN pn = CreatePen(PS_SOLID, 1, border);
+    HGDIOBJ ob = SelectObject(dc, br);
+    HGDIOBJ op = SelectObject(dc, pn);
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, rad * 2, rad * 2);
+    SelectObject(dc, ob);
+    SelectObject(dc, op);
+    DeleteObject(br);
+    DeleteObject(pn);
+}
+
+// 在子控件（列表 / 日志）外围画一圈圆角卡片；子控件白底与卡片同色，只剩描边可见。
+void DrawCardAround(HDC dc, HWND child) {
+    if (!child || !IsWindowVisible(child)) return;
+    HWND parent = GetParent(child);
+    RECT r = {};
+    GetWindowRect(child, &r);
+    POINT a = { r.left, r.top };
+    POINT b = { r.right, r.bottom };
+    ScreenToClient(parent, &a);
+    ScreenToClient(parent, &b);
+    RECT card = { a.x - S(2), a.y - S(2), b.x + S(2), b.y + S(2) };
+    FillRoundRectDc(dc, card, S(8), COL_PANEL_BG, COL_BORDER);
+}
 
 // ---------------------------------------------------------------------------
 // 基础工具
@@ -733,26 +800,124 @@ HWND MakeControl(HWND parent, const wchar_t* cls, const wchar_t* text,
         parent, (HMENU)(INT_PTR)id, nullptr, nullptr);
 }
 
+// 自绘按钮的子类化过程：只负责维护悬停高亮（按下态由 WM_DRAWITEM 的 ODS_SELECTED 提供）。
+LRESULT CALLBACK OwnerButtonProc(HWND h, UINT msg, WPARAM wp, LPARAM lp,
+                                 UINT_PTR, DWORD_PTR ref) {
+    int id = (int)ref;
+    if (id >= 0 && id < 2048) {
+        if (msg == WM_MOUSEMOVE) {
+            if (!g_btnHot[id]) {
+                if (!g_btnTrack[id]) {
+                    TRACKMOUSEEVENT t = { sizeof(t), TME_LEAVE, h, 0 };
+                    TrackMouseEvent(&t);
+                    g_btnTrack[id] = true;
+                }
+                g_btnHot[id] = true;
+                InvalidateRect(h, nullptr, TRUE);
+            }
+        } else if (msg == WM_MOUSELEAVE) {
+            g_btnHot[id] = false;
+            g_btnTrack[id] = false;
+            InvalidateRect(h, nullptr, TRUE);
+        }
+    }
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
+// 自绘按钮：主操作（安装）走主强调色，卸载 / 还原走警示色，其余为浅色次级按钮。
+void DrawOwnerButton(const DRAWITEMSTRUCT* od) {
+    HDC dc = od->hDC;
+    RECT rc = od->rcItem;
+    int id = (int)od->CtlID;
+    bool pressed = (od->itemState & ODS_SELECTED) != 0;
+    bool disabled = (od->itemState & ODS_DISABLED) != 0;
+    bool hot = (!pressed && !disabled && id >= 0 && id < 2048) ? g_btnHot[id] : false;
+
+    COLORREF fill = COL_BTN_BG, border = COL_BORDER, textCol = COL_TEXT;
+    if (id == IDC_BTN_INSTALL) {
+        fill = pressed ? COL_ACCENT_PSD : (hot ? COL_ACCENT_HOV : COL_ACCENT);
+        border = fill;
+        textCol = RGB(0xFF, 0xFF, 0xFF);
+    } else if (id == IDC_BTN_UNINSTALL) {
+        fill = pressed ? COL_WARN_PSD : (hot ? COL_WARN_HOV : COL_WARN);
+        border = fill;
+        textCol = RGB(0xFF, 0xFF, 0xFF);
+    } else {
+        fill = pressed ? COL_BTN_PSD : (hot ? COL_BTN_HOV : COL_BTN_BG);
+    }
+    if (disabled) { fill = COL_BTN_BG; border = COL_BORDER; textCol = COL_TEXT_HINT; }
+
+    FillRoundRectDc(dc, rc, S(7), fill, border);
+
+    wchar_t text[128] = {};
+    GetWindowTextW(od->hwndItem, text, 128);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, textCol);
+    HGDIOBJ of = SelectObject(dc, g_uiFont);
+    RECT tr = rc;
+    if (pressed) OffsetRect(&tr, 0, S(1));
+    DrawTextW(dc, text, -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (od->itemState & ODS_FOCUS) {
+        RECT fr = rc;
+        InflateRect(&fr, -S(4), -S(4));
+        DrawFocusRect(dc, &fr);
+    }
+    SelectObject(dc, of);
+}
+
 void LayoutControls(HWND hWnd) {
     RECT rc = {};
     GetClientRect(hWnd, &rc);
-    const int logTop = 460;
-    const int hintH = 34;
-    const int bottomPad = 14;
-    const int gap = 8;
+    const int padL = S(16);
+    const int padR = S(16);
+    const int contentW = rc.right - padL - padR;
 
+    HWND title = GetDlgItem(hWnd, IDC_STATIC_TITLE);
+    if (title)
+        MoveWindow(title, S(56), S(12), rc.right - S(56) - padR, S(24), TRUE);
+
+    // 「游戏程序」行：输入框随窗口拉伸，浏览按钮贴右。
+    if (g_hPathEdit)
+        MoveWindow(g_hPathEdit, S(100), S(LY_ROW1_Y),
+            rc.right - S(100) - padR - S(98), S(28), TRUE);
+    HWND browse = GetDlgItem(hWnd, IDC_BTN_BROWSE);
+    if (browse)
+        MoveWindow(browse, rc.right - padR - S(90), S(LY_ROW1_Y - 1), S(90), S(30), TRUE);
+
+    if (g_hArchLabel)
+        MoveWindow(g_hArchLabel, S(148), S(LY_INSTALL_Y + 6),
+            rc.right - S(148) - padR, S(22), TRUE);
+
+    if (g_hListLabel)
+        MoveWindow(g_hListLabel, padL, S(LY_LISTLABEL_Y), contentW, S(18), TRUE);
     if (g_hList)
-        MoveWindow(g_hList, S(16), S(146), rc.right - S(32), S(240), TRUE);
+        MoveWindow(g_hList, padL, S(LY_LIST_TOP), contentW, S(LY_LIST_H), TRUE);
 
-    int logH = rc.bottom - S(logTop) - S(hintH) - S(bottomPad) - S(gap);
-    if (logH < S(80)) logH = S(80);
+    HWND exitBtn = GetDlgItem(hWnd, IDC_BTN_EXIT);
+    if (exitBtn)
+        MoveWindow(exitBtn, rc.right - padR - S(90), S(LY_BTN_Y), S(90), S(LY_BTN_H), TRUE);
+    HWND refresh = GetDlgItem(hWnd, IDC_BTN_REFRESH);
+    if (refresh)
+        MoveWindow(refresh, rc.right - padR - S(90) - S(10) - S(84), S(LY_BTN_Y),
+            S(84), S(LY_BTN_H), TRUE);
+
+    HWND logLabel = GetDlgItem(hWnd, IDC_STATIC_LOGLABEL);
+    if (logLabel)
+        MoveWindow(logLabel, padL, S(LY_LOGLABEL_Y), contentW, S(18), TRUE);
+
+    const int logTop = S(LY_LOGLABEL_Y + 20);
+    const int hintH = S(40);
+    const int bottomPad = S(14);
+    const int gap = S(8);
+    int logH = rc.bottom - logTop - hintH - bottomPad - gap;
+    if (logH < S(90)) logH = S(90);
     if (g_hLog)
-        MoveWindow(g_hLog, S(16), S(logTop), rc.right - S(32), logH, TRUE);
+        MoveWindow(g_hLog, padL, logTop, contentW, logH, TRUE);
     if (g_hHint) {
-        int hintTop = S(logTop) + logH + S(gap);
-        int h = rc.bottom - hintTop - S(bottomPad);
+        int hintTop = logTop + logH + gap;
+        int h = rc.bottom - hintTop - bottomPad;
         if (h < S(30)) h = S(30);
-        MoveWindow(g_hHint, S(16), hintTop, rc.right - S(32), h, TRUE);
+        MoveWindow(g_hHint, padL, hintTop, contentW, h, TRUE);
     }
 }
 
@@ -760,48 +925,55 @@ void CreateControls(HWND hWnd) {
     g_uiFont = CreateFontW(-S(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+    g_titleFont = CreateFontW(-S(17), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+    g_bgBrush = CreateSolidBrush(COL_WINDOW_BG);
+    g_whiteBrush = CreateSolidBrush(COL_PANEL_BG);
     HFONT uiFont = g_uiFont;
 
     HWND c = nullptr;
 
-    c = MakeControl(hWnd, L"STATIC",
-        L"第一步：选择游戏的启动程序(.exe)，工具会自动判断 32/64 位并登记到下方列表。",
-        WS_CHILD | WS_VISIBLE, S(16), S(16), S(728), S(20), IDC_STATIC_TITLE);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    // 应用名标题；副标题在 WM_PAINT 中绘制，图标在窗口左上角。
+    c = MakeControl(hWnd, L"STATIC", L"时汐字体器 · 安装器",
+        WS_CHILD | WS_VISIBLE | SS_LEFT, S(56), S(12), S(700), S(24), IDC_STATIC_TITLE);
+    SendMessageW(c, WM_SETFONT, (WPARAM)g_titleFont, TRUE);
 
     c = MakeControl(hWnd, L"STATIC", L"游戏程序：",
-        WS_CHILD | WS_VISIBLE, S(16), S(48), S(80), S(20), IDC_STATIC_PATHLABEL);
+        WS_CHILD | WS_VISIBLE, S(16), S(LY_ROW1_Y + 4), S(80), S(20), IDC_STATIC_PATHLABEL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hPathEdit = MakeControl(hWnd, L"EDIT", L"",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY,
-        S(100), S(46), S(548), S(26), IDC_EDIT_PATH);
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_READONLY,
+        S(100), S(LY_ROW1_Y), S(540), S(28), IDC_EDIT_PATH);
     SendMessageW(g_hPathEdit, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
-    c = MakeControl(hWnd, L"BUTTON", L"浏览…",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(654), S(45), S(90), S(28), IDC_BTN_BROWSE);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    MakeControl(hWnd, L"BUTTON", L"浏览…",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(654), S(LY_ROW1_Y - 1), S(90), S(30), IDC_BTN_BROWSE);
 
-    c = MakeControl(hWnd, L"BUTTON", L"安装",
-        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        S(16), S(84), S(120), S(32), IDC_BTN_INSTALL);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    MakeControl(hWnd, L"BUTTON", L"安装到游戏",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_DEFPUSHBUTTON,
+        S(16), S(LY_INSTALL_Y), S(126), S(LY_BTN_H), IDC_BTN_INSTALL);
 
     g_hArchLabel = MakeControl(hWnd, L"STATIC", L"检测结果：尚未选择",
-        WS_CHILD | WS_VISIBLE, S(148), S(90), S(596), S(20), IDC_STATIC_ARCH);
+        WS_CHILD | WS_VISIBLE, S(148), S(LY_INSTALL_Y + 6), S(600), S(22), IDC_STATIC_ARCH);
     SendMessageW(g_hArchLabel, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hListLabel = MakeControl(hWnd, L"STATIC", L"已登记的游戏：",
-        WS_CHILD | WS_VISIBLE, S(16), S(124), S(728), S(18), IDC_STATIC_LISTLABEL);
+        WS_CHILD | WS_VISIBLE, S(16), S(LY_LISTLABEL_Y), S(700), S(18), IDC_STATIC_LISTLABEL);
     SendMessageW(g_hListLabel, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hList = MakeControl(hWnd, WC_LISTVIEWW, L"",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP |
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP |
         LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
-        S(16), S(146), S(728), S(240), IDC_LIST_GAMES);
+        S(16), S(LY_LIST_TOP), S(740), S(LY_LIST_H), IDC_LIST_GAMES);
     SendMessageW(g_hList, WM_SETFONT, (WPARAM)uiFont, TRUE);
-    ListView_SetExtendedListViewStyle(g_hList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+    ListView_SetExtendedListViewStyle(g_hList,
+        LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_INFOTIP);
+    ListView_SetBkColor(g_hList, COL_PANEL_BG);
+    ListView_SetTextBkColor(g_hList, COL_PANEL_BG);
+    ListView_SetTextColor(g_hList, COL_TEXT);
     {
         struct ColDef { const wchar_t* text; int w; };
         const ColDef cols[] = {
@@ -818,62 +990,109 @@ void CreateControls(HWND hWnd) {
         }
     }
 
-    c = MakeControl(hWnd, L"BUTTON", L"卸载 / 还原",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(16), S(396), S(110), S(32), IDC_BTN_UNINSTALL);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    MakeControl(hWnd, L"BUTTON", L"卸载 / 还原",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(16), S(LY_BTN_Y), S(112), S(LY_BTN_H), IDC_BTN_UNINSTALL);
+    MakeControl(hWnd, L"BUTTON", L"打开目录",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(136), S(LY_BTN_Y), S(100), S(LY_BTN_H), IDC_BTN_OPEN_DIR);
+    MakeControl(hWnd, L"BUTTON", L"移除记录",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(244), S(LY_BTN_Y), S(100), S(LY_BTN_H), IDC_BTN_REMOVE);
+    MakeControl(hWnd, L"BUTTON", L"手动登记游戏…",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(352), S(LY_BTN_Y), S(132), S(LY_BTN_H), IDC_BTN_ADD_GAME);
+    MakeControl(hWnd, L"BUTTON", L"刷新",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(492), S(LY_BTN_Y), S(84), S(LY_BTN_H), IDC_BTN_REFRESH);
+    MakeControl(hWnd, L"BUTTON", L"退出",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        S(674), S(LY_BTN_Y), S(90), S(LY_BTN_H), IDC_BTN_EXIT);
 
-    c = MakeControl(hWnd, L"BUTTON", L"打开目录",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(132), S(396), S(100), S(32), IDC_BTN_OPEN_DIR);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
-
-    c = MakeControl(hWnd, L"BUTTON", L"移除记录",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(238), S(396), S(100), S(32), IDC_BTN_REMOVE);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
-
-    c = MakeControl(hWnd, L"BUTTON", L"手动登记游戏…",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(344), S(396), S(130), S(32), IDC_BTN_ADD_GAME);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
-
-    c = MakeControl(hWnd, L"BUTTON", L"刷新",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(480), S(396), S(80), S(32), IDC_BTN_REFRESH);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
-
-    c = MakeControl(hWnd, L"BUTTON", L"退出",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        S(654), S(396), S(90), S(32), IDC_BTN_EXIT);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    // 按钮统一子类化，以支持鼠标悬停高亮。
+    const int kBtnIds[] = { IDC_BTN_BROWSE, IDC_BTN_INSTALL, IDC_BTN_UNINSTALL,
+                            IDC_BTN_OPEN_DIR, IDC_BTN_REMOVE, IDC_BTN_ADD_GAME,
+                            IDC_BTN_REFRESH, IDC_BTN_EXIT };
+    for (int id : kBtnIds) {
+        HWND b = GetDlgItem(hWnd, id);
+        if (b) SetWindowSubclass(b, OwnerButtonProc, 1, (DWORD_PTR)id);
+    }
 
     c = MakeControl(hWnd, L"STATIC", L"操作日志：",
-        WS_CHILD | WS_VISIBLE, S(16), S(440), S(728), S(18), IDC_STATIC_LOGLABEL);
+        WS_CHILD | WS_VISIBLE, S(16), S(LY_LOGLABEL_Y), S(700), S(18), IDC_STATIC_LOGLABEL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hLog = MakeControl(hWnd, L"EDIT", L"",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        S(16), S(460), S(728), S(110), IDC_EDIT_LOG);
+        S(16), S(LY_LOGLABEL_Y + 20), S(740), S(110), IDC_EDIT_LOG);
     SendMessageW(g_hLog, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hHint = MakeControl(hWnd, L"STATIC",
         L"提示：安装会备份游戏目录原有的 winmm.dll；请先关闭游戏。\n"
         L"列表会记住每个游戏当前应用的字体；联网 / 反作弊游戏请谨慎使用。",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        S(16), S(578), S(728), S(34), IDC_STATIC_HINT);
+        S(16), S(600), S(740), S(40), IDC_STATIC_HINT);
     SendMessageW(g_hHint, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     LayoutControls(hWnd);
+}
+
+std::wstring ListSubItemText(int row, int sub) {
+    if (!g_hList) return std::wstring();
+    wchar_t buf[512] = {};
+    ListView_GetItemText(g_hList, row, sub, buf, 512);
+    return buf;
+}
+
+bool GetGameRecordAt(int row, GameRecord* out) {
+    std::vector<GameRecord> games;
+    LoadGames(&games);
+    if (row < 0 || row >= (int)games.size()) return false;
+    *out = games[row];
+    return true;
+}
+
+// 列表行着色：「已安装」绿色、其余灰色；选中行统一用浅蓝底。
+LRESULT HandleListCustomDraw(NMLVCUSTOMDRAW* cd) {
+    switch (cd->nmcd.dwDrawStage) {
+    case CDDS_PREPAINT:
+        return CDRF_NOTIFYITEMDRAW;
+    case CDDS_ITEMPREPAINT:
+        return CDRF_NOTIFYSUBITEMDRAW;
+    case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
+        bool sel = (cd->nmcd.uItemState & CDIS_SELECTED) != 0;
+        cd->clrTextBk = sel ? COL_LIST_SEL : COL_PANEL_BG;
+        if (cd->iSubItem == 4) {
+            std::wstring st = ListSubItemText((int)cd->nmcd.dwItemSpec, 4);
+            cd->clrText = (st == L"已安装") ? (sel ? COL_TEXT : COL_OK) : COL_TEXT_DIM;
+        } else {
+            cd->clrText = COL_TEXT;
+        }
+        return CDRF_DODEFAULT;
+    }
+    }
+    return CDRF_DODEFAULT;
+}
+
+// 表头着色：浅色底 + 灰字，与浅色主题统一。
+LRESULT HandleHeaderCustomDraw(NMLVCUSTOMDRAW* cd) {
+    if (cd->nmcd.dwDrawStage == CDDS_PREPAINT)
+        return CDRF_NOTIFYITEMDRAW;
+    if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+        cd->clrTextBk = COL_HEADER_BG;
+        cd->clrText = COL_TEXT_DIM;
+        return CDRF_DODEFAULT;
+    }
+    return CDRF_DODEFAULT;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CREATE:
         CreateControls(hWnd);
-        Log(L"CTFontHook 安装器已就绪。");
-        Log(L"请选择游戏的启动程序(.exe)并点击「安装」；已安装的游戏会显示在下方列表。");
+        Log(L"时汐字体器 · 安装器已就绪。");
+        Log(L"请选择游戏的启动程序(.exe)并点击「安装到游戏」；已安装的游戏会显示在下方列表。");
         RefreshGameList();
         return 0;
 
@@ -881,6 +1100,107 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp != SIZE_MINIMIZED)
             LayoutControls(hWnd);
         return 0;
+
+    case WM_ERASEBKGND:
+        return 1;  // 背景统一在 WM_PAINT 中绘制，避免闪烁
+
+    case WM_PAINT: {
+        PAINTSTRUCT ps = {};
+        HDC dc = BeginPaint(hWnd, &ps);
+        RECT rc = {};
+        GetClientRect(hWnd, &rc);
+        if (rc.right <= 0 || rc.bottom <= 0) { EndPaint(hWnd, &ps); return 0; }
+
+        HDC mem = CreateCompatibleDC(dc);
+        HBITMAP bmp = CreateCompatibleBitmap(dc, rc.right, rc.bottom);
+        HGDIOBJ ob = SelectObject(mem, bmp);
+
+        HBRUSH bg = CreateSolidBrush(COL_WINDOW_BG);
+        FillRect(mem, &rc, bg);
+        DeleteObject(bg);
+
+        // 顶部主色强调条（设计语言：一条主色顶边）
+        RECT bar = { 0, 0, rc.right, S(4) };
+        HBRUSH ac = CreateSolidBrush(COL_ACCENT);
+        FillRect(mem, &bar, ac);
+        DeleteObject(ac);
+
+        if (g_appIcon)
+            DrawIconEx(mem, S(16), S(14), g_appIcon, S(30), S(30), 0, nullptr, DI_NORMAL);
+
+        SetBkMode(mem, TRANSPARENT);
+        SetTextColor(mem, COL_TEXT_DIM);
+        HGDIOBJ of = SelectObject(mem, g_uiFont);
+        RECT sub = { S(56), S(36), rc.right - S(16), S(60) };
+        DrawTextW(mem, L"为游戏更换字体：选择启动程序(.exe)，自动识别 32/64 位并安装。",
+            -1, &sub, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+        SelectObject(mem, of);
+
+        DrawCardAround(mem, g_hList);
+        DrawCardAround(mem, g_hLog);
+
+        BitBlt(dc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
+        SelectObject(mem, ob);
+        DeleteObject(bmp);
+        DeleteDC(mem);
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+
+    case WM_CTLCOLORSTATIC: {
+        HDC hdc = (HDC)wp;
+        HWND ctl = (HWND)lp;
+        SetBkMode(hdc, TRANSPARENT);
+        wchar_t cls[16] = {};
+        GetClassNameW(ctl, cls, 16);
+        if (lstrcmpiW(cls, L"Edit") == 0) {  // 只读 EDIT 也走 STATIC 分支
+            SetTextColor(hdc, COL_TEXT);
+            SetBkColor(hdc, COL_PANEL_BG);
+            return (LRESULT)g_whiteBrush;
+        }
+        int id = GetDlgCtrlID(ctl);
+        COLORREF c = COL_TEXT;
+        if (id == IDC_STATIC_HINT) c = COL_TEXT_HINT;
+        else if (id == IDC_STATIC_PATHLABEL || id == IDC_STATIC_ARCH ||
+                 id == IDC_STATIC_LOGLABEL || id == IDC_STATIC_LISTLABEL) c = COL_TEXT_DIM;
+        SetTextColor(hdc, c);
+        SetBkColor(hdc, COL_WINDOW_BG);
+        return (LRESULT)g_bgBrush;
+    }
+
+    case WM_CTLCOLOREDIT:
+        SetTextColor((HDC)wp, COL_TEXT);
+        SetBkColor((HDC)wp, COL_PANEL_BG);
+        return (LRESULT)g_whiteBrush;
+
+    case WM_DRAWITEM: {
+        const DRAWITEMSTRUCT* od = (const DRAWITEMSTRUCT*)lp;
+        if (od && od->CtlType == ODT_BUTTON) {
+            DrawOwnerButton(od);
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_NOTIFY: {
+        NMHDR* nh = (NMHDR*)lp;
+        if (!nh) break;
+        if (g_hList && nh->hwndFrom == ListView_GetHeader(g_hList) &&
+            nh->code == NM_CUSTOMDRAW)
+            return HandleHeaderCustomDraw((NMLVCUSTOMDRAW*)lp);
+        if (g_hList && nh->hwndFrom == g_hList) {
+            if (nh->code == NM_DBLCLK) { OnOpenSelectedDir(); return 0; }
+            if (nh->code == NM_CUSTOMDRAW) return HandleListCustomDraw((NMLVCUSTOMDRAW*)lp);
+            if (nh->code == LVN_GETINFOTIP) {
+                NMLVGETINFOTIPW* it = (NMLVGETINFOTIPW*)lp;
+                GameRecord g;
+                if (GetGameRecordAt(it->iItem, &g))
+                    lstrcpynW(it->pszText, g.dir.c_str(), it->cchTextMax);
+                return 0;
+            }
+        }
+        break;
+    }
 
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
@@ -911,6 +1231,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DESTROY:
         if (g_uiFont) { DeleteObject(g_uiFont); g_uiFont = nullptr; }
+        if (g_titleFont) { DeleteObject(g_titleFont); g_titleFont = nullptr; }
+        if (g_bgBrush) { DeleteObject(g_bgBrush); g_bgBrush = nullptr; }
+        if (g_whiteBrush) { DeleteObject(g_whiteBrush); g_whiteBrush = nullptr; }
+        if (g_appIcon) { DestroyIcon(g_appIcon); g_appIcon = nullptr; }
+        if (g_appIconSm) { DestroyIcon(g_appIconSm); g_appIconSm = nullptr; }
         PostQuitMessage(0);
         return 0;
     }
@@ -931,12 +1256,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         ReleaseDC(nullptr, screenDc);
     }
 
+    // 应用图标：EXE 内嵌的多尺寸 ICON 资源，按系统推荐尺寸加载大小两种。
+    g_appIcon = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON),
+        IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON),
+        LR_DEFAULTCOLOR);
+    g_appIconSm = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON),
+        IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+        LR_DEFAULTCOLOR);
+
     WNDCLASSEXW wc = { sizeof(wc) };
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = kWndClass;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.hIcon = g_appIcon;
+    wc.hIconSm = g_appIconSm;
+    wc.hbrBackground = nullptr;  // 背景由 WM_PAINT 自绘
     RegisterClassExW(&wc);
 
     const DWORD kStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
@@ -955,8 +1290,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
 
     MSG msg = {};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        // 走对话框式键盘导航：Tab 切换焦点、Enter 触发默认按钮。
+        if (!IsDialogMessageW(hWnd, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
     }
     return 0;
 }

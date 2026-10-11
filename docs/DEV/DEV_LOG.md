@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-10-11　安装器窗口「浅色主题复刻 + 中文名 + 图标」
+
+- **任务**：优化 CTFontHook-Setup 安装器窗口——① 提升易用性；② 按字体选择器的设计语言改为**浅色主题**
+  （与选择器深色主题相反）；③ 应用中文名「时汐字体器」并接入 `设计图/ico` 的图标作为窗口 / 桌面图标。
+- **改动文件**（3 改 + 1 新建，全部在计划内）：
+  - `installer/app.ico`（**新建**）：把 `设计图/ico/时汐字体器_{16,24,32,48,64,128,256}.ico` 合并为单文件多尺寸
+    ICO（原样保留各尺寸 PNG 位图，未重采样）。因 `设计图/` 未纳入版本控制，必须复制进仓库以保证构建可复现。
+  - `installer/resource.h`：新增 `IDI_APPICON 2001`。
+  - `installer/version.rc`：新增 `IDI_APPICON ICON "app.ico"`（EXE 文件图标 + 窗口图标）；仍保持全 ASCII。
+  - `installer/main.cpp`（主要改动）：浅色调色板 + 圆角卡片 / 强调色；按钮改 `BS_OWNERDRAW` 自绘
+    （悬停 / 按下 / 焦点态，主操作「安装到游戏」走主色、卸载 / 还原走警示色）；`WM_PAINT` 自绘窗口底 /
+    顶部强调条 / 应用图标 / 副标题 / 列表与日志卡片；`WM_CTLCOLORSTATIC` 统一静态与只读输入框配色；
+    `NM_CUSTOMDRAW` 给列表行与表头着色（已安装=绿）；新增列表双击=打开目录、行 tooltip、
+    `WS_TABSTOP` + `IsDialogMessage` 键盘导航；标题改「时汐字体器 · 安装器」。
+- **明确不改（功能一个不丢）**：`DoInstall` / `DoUninstallForDir` / 清单读写 / PE 架构检测 / 全部按钮回调
+  **逻辑一行未动**；`games.ini` 与 `manifest.ini` 数据格式不变；`src/**`（DLL 与选择器）零改动；
+  EXE 文件名仍为 `CTFontHook-Setup.exe`。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验）；
+  PowerShell 校验 `CTFontHook-Setup.exe` 图标嵌入成功（`ExtractAssociatedIcon` = 32×32）。
+- **偏差 / 限制**：
+  - 安装器为**原生 GDI 窗口**，本机**无法可视化验证**观感 → 浅色主题观感与自绘细节需主人**真机确认**。
+  - 配色与版式为可调常量（`main.cpp` 顶部 `COL_*` / `LY_*`），真机观感后可微调。
+  - `version.rc` 的 `ProductName` 仍为 ASCII 的 `CTFontHook`（rc.exe 编码约束，塞中文有乱码风险）；
+    界面可见中文名由**窗口标题**提供。
+
 ## 2026-10-11　界面优化「整体放大 + 兼容设置下拉菜单」（真机反馈）
 
 - **任务**：主人真机反馈两点——① 窗口太小、内容看不清；②「兼容设置」里开关右侧的 ▾ 药丸

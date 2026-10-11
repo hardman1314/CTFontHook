@@ -19,3 +19,6 @@
 #define IDC_BTN_REMOVE        1016
 #define IDC_BTN_REFRESH       1017
 #define IDC_BTN_ADD_GAME      1018
+
+// 应用图标（由 app.ico 提供多尺寸位图，EXE 文件图标与窗口图标共用）。
+#define IDI_APPICON           2001

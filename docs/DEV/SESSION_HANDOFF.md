@@ -71,6 +71,14 @@
    「与旧文件**合并**」——新增 `ReadIniTextFile` / `IniLineKey` 两个辅助函数，受管键就地替换、
    注释/空行/未知键/节头原样保留、缺失键补末尾；旧文件不存在时输出与旧实现逐字节一致
    → **4/4 编译通过**。详见 [`features/配置写入保留注释.md`](features/配置写入保留注释.md)。
+23. **修复安装器窗口图标显示为系统默认图标（2026-10-11）**：根因是 `rc.exe` 的**编码陷阱**——
+   `installer/resource.h:22` 中文注释结尾 `。`（UTF-8 `E3 80 82`）在 GBK 解析下吞掉了下一行的
+   `#define IDI_APPICON 2001`，使图标组名退化为字符串 `"IDI_APPICON"`，
+   `LoadImageW(..., MAKEINTRESOURCEW(2001))` 失败 → 窗口/任务栏显示系统默认图标（EXE 文件图标正常）。
+   修法：给 `installer/resource.h`、`installer/version.rc`、`src/CTFontHook.rc` 加 **UTF-8 BOM**
+   （内容一字不改）→ **4/4 编译通过**，安装器 `RT_GROUP_ICON id=2001` 已用 `pefile` 复核、
+   `LoadImage` 三个尺寸均返回有效句柄。
+   详见 [`features/安装器浅色主题与图标.md`](features/安装器浅色主题与图标.md) §3.1 / §4 / §5 与 `DEV_LOG.md`。
 
 ## 进行中（用户已批准的《变更计划》，尚未实现）
 
@@ -112,6 +120,9 @@
 ## 注意事项
 
 - 最终产物 DLL 必须仍叫 `winmm.dll`，不要改。
+- **RC 参与的文件必须带 UTF-8 BOM**（`installer/resource.h`、`installer/version.rc`、`src/CTFontHook.rc`）：
+  `rc.exe` 不吃 `/utf-8`，无 BOM 时会把中文注释结尾字节当成 GBK 前导字节、吞掉下一行代码
+  （2026-10-11 曾因此让 `IDI_APPICON` 失效、安装器图标变系统默认图标）。
 - **`scripts\*.bat` 必须保持 GBK + CRLF 编码**（cmd 在 65001 下读多行中文批处理会错位）。
   改脚本请以 UTF-8 编辑后运行 `scripts\tools\to_gbk.ps1` 转回 GBK。
 - 源码内的 `SimpleFontHook.*` 字面量（窗口消息、注入标记等）是运行期协议，**不要**改名（见 ADR-0004）。

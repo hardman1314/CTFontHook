@@ -1,4 +1,4 @@
-// CTFontHook 安装器：控件 ID 定义（无对话资源，控件在代码中程序化创建）。
+﻿// CTFontHook 安装器：控件 ID 定义（无对话资源，控件在代码中程序化创建）。
 #pragma once
 
 #define IDC_STATIC_TITLE      1001

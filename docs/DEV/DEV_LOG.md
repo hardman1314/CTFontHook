@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-10-11　修复安装器窗口图标显示为「系统默认图标」（rc.exe 编码陷阱）
+
+- **任务**：主人反馈「程序的图标完全没更新为 `设计图/ico`」。实测现象：安装器**窗口标题栏 / 任务栏**
+  图标是系统默认图标；而 EXE 的**桌面 / 资源管理器文件图标**其实是正确的设计图。
+- **根因（已证实）**：`installer/resource.h:22` 的中文注释 `// 应用图标（…共用）。` 结尾 `。`
+  的 UTF-8 字节为 `E3 80 82`；`rc.exe` **按 ANSI/GBK 读源文件**，其中 `0x82` 被当作 GBK 前导字节、
+  把紧随的 `LF` 当后尾字节吃掉 → 该注释**吞掉下一行的 `#define IDI_APPICON 2001`** → 宏未定义 →
+  `installer/version.rc:9` 的 `IDI_APPICON ICON "app.ico"` 被 RC 当成**资源名字符串**，
+  图标组名成了字符串 `"IDI_APPICON"` 而非整数 `2001` → `installer/main.cpp:1260` 的
+  `LoadImageW(hInstance, MAKEINTRESOURCEW(2001), ...)` 找不到资源、返回 NULL →
+  `wc.hIcon/hIconSm = NULL`（`main.cpp:1272-1273`）→ Windows 画**默认图标**。
+  - 为何编译期没暴露：工程只给 **cl.exe** 传了 `/utf-8`（`installer/CTFontHookInstaller.vcxproj:92`），
+    **`ResourceCompile` 没有对应选项** —— 同一份中文注释在 C++ 里正常、在 RC 里被吞。
+  - 证据：`pefile` dump 安装器 EXE → `RT_GROUP_ICON` 名为字符串 `4944495f41505049434f4e`（ASCII `IDI_APPICON`）；
+    对照 `Release/winmm.dll` 为 `id=2001`。用 GBK 逐字节模拟 `resource.h`，第 1–2 行与第 22–23 行确实粘连。
+  - 对照实验（真机 `rc.exe` 10.0.26100.0，同一份头文件）：无 BOM → 字符串名（复现缺陷）；
+    **UTF-8 BOM → 整数 2001**；`/c65001` → 整数 2001。
+- **改动文件**（3 个，**仅文件头插入 UTF-8 BOM，内容一字不改**，全部在批准的计划内）：
+  - `installer/resource.h`（根因所在）
+  - `installer/version.rc`
+  - `src/CTFontHook.rc`（**同源隐患预防**：该文件当前用字面量 `2001`/`101` 未触发，
+    但其中文注释同样有吞行风险，一旦将来改动就会静默弄坏选择器图标）
+- **明确不改**：`installer/app.ico` 与 `src/res/app.ico`（逐帧校验 = `设计图/ico` 的 7 帧拼接，
+  美术本来就是对的）；`installer/main.cpp` 的 `LoadImageW` 调用（代码正确）；`version.rc` 的资源 ID
+  与其余内容；**所有 `.vcxproj`**（备选 `/c65001` 需改构建配置，未采用）。
+- **验证**：
+  - `scripts\1-一键测试.bat` → **4/4 通过**；Win32 DLL `938496 → 590848`。
+  - `pefile` dump `installer/bin/Win32/Release/CTFontHook-Setup.exe` → **`RT_GROUP_ICON id=2001`**
+    （不再是字符串名）；`Release/winmm.dll`、`x64/Release/winmm.dll` 仍为 `id=2001` + `RT_RCDATA id=101`。
+  - 复跑安装器实际调用路径：`LoadLibraryExW` + `LoadImage(module, MAKEINTRESOURCE(2001), IMAGE_ICON, sz, sz)`
+    在 16 / 32 / 48 三个尺寸下**均返回非 0 句柄**（修复前为 0、`err=1813`）。
+- **偏差 / 限制**：⚠️ **未做真机验证** —— 需主人运行新打包的 `CTFontHook-Setup.exe` 确认
+  标题栏 / 任务栏图标为设计图（若仍显示旧图标，多半是 Windows 图标缓存，换个目录运行即可排除）。
+  **回归风险提示**：RC 参与的文件（`.rc` 及其 `include` 的头文件）**必须保留 UTF-8 BOM**，
+  否则中文注释会再次静默吞行。
+
+---
+
 ## 2026-10-11　P2-6：保存配置时保留 FontHook.ini 的手写注释
 
 - **任务**：修 P2-6 —— 玩家在 `FontHook.ini` 里手写的注释（`;`/`#`）、空行、未知键，

@@ -19,7 +19,7 @@ static void CreatePickerWindow() {
         WS_THICKFRAME | WS_MINIMIZEBOX;
     g_hWnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_APPWINDOW | WS_EX_LAYERED,
-        WND_CLASS, L"Font Selection Assistant", pickerStyle,
+        WND_CLASS, L"字体选择器", pickerStyle,
         (screenW - WINDOW_WIDTH) / 2, (screenH - WINDOW_HEIGHT) / 2,
         WINDOW_WIDTH, WINDOW_HEIGHT,
         NULL, NULL, g_hModule, NULL);
@@ -58,7 +58,7 @@ static void CreatePickerWindow() {
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
         22, TITLE_HEIGHT + 14, WINDOW_WIDTH - 62, 20,
         g_hWnd, NULL, g_hModule, NULL);
-    SendMessage(g_hSearchEdit, EM_SETCUEBANNER, FALSE, (LPARAM)L"  \x2727 Search fonts...");
+    SendMessage(g_hSearchEdit, EM_SETCUEBANNER, FALSE, (LPARAM)L"  \x2727 搜索字体…");
 
     if (g_editFont) DeleteObject(g_editFont);
     g_editFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,

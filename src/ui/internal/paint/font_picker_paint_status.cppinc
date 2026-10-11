@@ -47,19 +47,35 @@ static void PaintBottomBar(HDC mem, const RECT& rc)
     // 悬停且已有方案时高亮，提示「点击可定位到列表中该字体」。
     bool appliedClickable = g_bottomAppliedHovered && !g_appliedFont.empty();
     SetTextColor(mem, appliedClickable ? COL_ACCENT : COL_TEXT_DIM);
+    RECT toggleRc = GetBottomBarHideToggleRect();
     std::wstring curText = L"\x5F53\x524D\x65B9\x6848\xFF1A";  // 当前方案：
     curText += g_appliedFont.empty() ? L"\xFF08\x672A\x5E94\x7528\xFF09" : g_appliedFont;
-    RECT curRc = { SF(23), bar.top, rc.right - SF(60), bar.bottom };
+    RECT curRc = { SF(23), bar.top, toggleRc.left - SF(8), bar.bottom };
     DrawTextW(mem, curText.c_str(), -1, &curRc,
         DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
 
-    // 右侧：界面预览（无热键时改为降级提示，保留 P0-2 行为）
-    SetTextColor(mem, g_toggleHotkeyRegistered ? COL_TEXT_DIM : COL_WARN);
-    const wchar_t* rightText = g_toggleHotkeyRegistered
-        ? L"\x754C\x9762\x9884\x89C8"                                      // 界面预览
-        : L"\x65E0\x70ED\x952E\xB7\x5173\x95ED\x3D\x6700\x5C0F\x5316";    // 无热键·关闭=最小化
-    RECT rightRc = { rc.right / 2, bar.top, rc.right - SF(13), bar.bottom };
-    DrawTextW(mem, rightText, -1, &rightRc,
-        DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    // 右侧：勾选框「打开游戏时默认隐藏窗口」（勾选=该游戏下次启动隐藏，可热键呼出）。
+    // 无热键的降级提示已迁到标题栏（见 PaintTitleBar）。
+    {
+        bool on = !Config::PickerShowOnStartup;
+        bool hov = g_hideOnStartupHovered;
+        int box = SF(13);
+        int boxTop = centerY - box / 2;
+        RECT boxRc = { toggleRc.left, boxTop, toggleRc.left + box, boxTop + box };
+        FillRoundRect(mem, boxRc, 3, on ? COL_ACCENT : (hov ? COL_HOVER_BG : COL_BTN_BG));
+        DrawRoundRectOutline(mem, boxRc, 3, on ? COL_ACCENT : COL_BORDER);
+        if (on) {
+            HFONT markFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+            HGDIOBJ oldMark = SelectObject(mem, markFont);
+            SetTextColor(mem, COL_PANEL_BG);
+            RECT markRc = boxRc;
+            DrawTextW(mem, L"\x2713", -1, &markRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            SelectObject(mem, oldMark);
+        }
+        RECT labelRc = { boxRc.right + SF(6), bar.top, toggleRc.right, bar.bottom };
+        SetTextColor(mem, hov ? COL_TEXT : COL_TEXT_DIM);
+        DrawTextW(mem, HIDE_ON_STARTUP_LABEL, -1, &labelRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    }
     SelectObject(mem, oldFont);
 }

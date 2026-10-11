@@ -42,6 +42,23 @@ static void PaintTitleBar(HDC mem, const RECT& rc)
         SelectObject(mem, oldFont);
     }
 
+    // 「指南」药丸右侧：呼出窗口热键提示（无热键时警示，并说明关闭=最小化，保留 P0-2 行为）。
+    {
+        HFONT hintFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+        HGDIOBJ oldFont = SelectObject(mem, hintFont);
+        wchar_t hintBuf[64] = {};
+        if (g_toggleHotkeyRegistered)
+            swprintf_s(hintBuf, L"\x547C\x51FA\x7A97\x53E3\xFF1A%s", g_toggleHotkeyDisplayName);  // 呼出窗口：%s
+        else
+            wcscpy_s(hintBuf,
+                L"\x65E0\x70ED\x952E\xB7\x5173\x95ED\x3D\x6700\x5C0F\x5316");  // 无热键·关闭=最小化
+        SetTextColor(mem, g_toggleHotkeyRegistered ? COL_TEXT_HINT : COL_WARN);
+        RECT hintRc = { SF(158), 0, rc.right - SF(84), TITLE_HEIGHT };
+        DrawTextW(mem, hintBuf, -1, &hintRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+        SelectObject(mem, oldFont);
+    }
+
     // 右侧：最小化 / 关闭（设计稿各 36 宽）
     RECT minRc = { rc.right - SF(76), 0, rc.right - SF(40), TITLE_HEIGHT };
     RECT closeRc = { rc.right - SF(40), 0, rc.right - SF(4), TITLE_HEIGHT };

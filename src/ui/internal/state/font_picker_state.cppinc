@@ -318,7 +318,13 @@ static bool g_scrollbarHovered = false;
 static bool g_rowApplyHovered = false;  // 选中行「应用」按钮悬停
 static bool g_currentFontHintHovered = false;  // 预览区「当前字体」提示悬停
 static bool g_bottomAppliedHovered = false;    // 底栏「当前方案」提示悬停（可点击定位）
+static bool g_hideOnStartupHovered = false;    // 底栏「打开游戏时默认隐藏窗口」勾选框悬停
 static bool g_previewSampleHovered = false;    // 预览区样例文字悬停
+
+// 底栏勾选框文案：勾选 = 把 Config::PickerShowOnStartup 写 0（该游戏下次启动默认隐藏，可热键呼出）。
+// 配置写在 DLL 同目录的 FontHook.ini，天然「只对该游戏生效」。
+static const wchar_t* HIDE_ON_STARTUP_LABEL =
+    L"\x6253\x5F00\x6E38\x620F\x65F6\x9ED8\x8BA4\x9690\x85CF\x7A97\x53E3";  // 打开游戏时默认隐藏窗口
 
 // 预览字号：仅本次会话有效，不写入配置（设计稿默认 22px）。
 static int g_previewFontPx = 22;

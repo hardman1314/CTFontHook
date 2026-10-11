@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-10-11　按游戏「打开游戏时默认隐藏窗口」勾选框 + 顶部热键提示
+
+- **任务**：在字体选择器窗口放一个勾选框——勾选后**只对该游戏**下次启动默认隐藏窗口（其他游戏照常弹窗），
+  可热键呼出，并在顶部栏给出「呼出窗口」的快捷键提示。
+- **关键结论（无需新增存储）**：`Config::PickerShowOnStartup`（默认 true）早已存在，启动时若为 false
+  即隐藏（`font_picker_lifecycle.cppinc:239`）；而 `FontHook.ini` 放在 **DLL 同目录、每游戏一份**
+  （`utils.cpp:738`），故该开关**天然只对该游戏生效**。热键呼出亦已具备（Insert/Pause/Scroll Lock）。
+  本功能增量 = 一个勾选框 UI + 一处顶部栏提示。
+- **改动文件**（6 改 + 1 新建，全部在计划内）：
+  - `src/ui/internal/state/font_picker_state.cppinc`：新增 `g_hideOnStartupHovered` 与文案常量 `HIDE_ON_STARTUP_LABEL`。
+  - `src/ui/internal/state/font_picker_layout_geometry.cppinc`：新增 `GetBottomBarHideToggleRect()`（右对齐、按文案实测宽度）。
+  - `src/ui/internal/paint/font_picker_paint_status.cppinc`：底栏右侧改绘勾选框（方框+✓，悬停变亮）；
+    「当前方案」右边界收缩到勾选框左侧以免重叠；原「界面预览」文案移除。
+  - `src/ui/internal/paint/font_picker_paint_title.cppinc`：药丸右侧绘制「呼出窗口：<热键>」；
+    无热键时显示警示色「无热键·关闭=最小化」（原底栏 P0-2 提示上移）。
+  - `src/ui/internal/input/font_picker_wndproc.cppinc`：新增 `HandleHideOnStartupToggleClick()`（切换并 `SavePickerConfig()`）、
+    hover 追踪、`WM_MOUSELEAVE` 复位、`WM_LBUTTONDOWN` 派发。
+  - `docs/DEV/features/按游戏默认隐藏窗口.md`（**新建**）：本功能档案。
+- **明确不改**：`FontHook.ini` 键名/格式（沿用既有 `PickerShowOnStartup`）、热键注册/协议、注入标记、
+  `winmm.dll` 名与导出表、列表单击只选中 / 预览 A± 不落盘等既有交互。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**；Win32 `935936 → 588800`。
+  逻辑核对：`AppendIniText` 空值也会写键（`utils.cpp:796`）→ 「只勾选、未应用字体」的游戏也能持久化生效。
+  坐标估算（默认缩放 1.25 / 窗口 512）：勾选框右对齐止于 496、起约 351；「当前方案」右界 341，不重叠。
+- **偏差 / 限制**：
+  - **真机验证未做**（本机无 GUI）：勾选框观感/点击、顶部热键提示、以及「勾选→重启游戏默认隐藏→热键呼出」
+    的端到端行为需主人真机确认。
+  - 勾选仅在「字体」页显示（「指南」页有独立页脚，不绘底栏）。
+  - **附带发现（只报告）**：原底栏「界面预览」在 Figma 导出里其实是**文本图层名**（`设计图/CT字体器.json`
+    `textContent[78]`），语义可疑；本次按批准以勾选框替换该位置。
+
+---
+
 ## 2026-10-11　选择器窗口优化（图标 / 标题 / 面积 / 页脚 / 缩放控件 / 整体缩放 / 定位）
 
 - **任务**：主人真机使用字体选择器后提出 7 条体验问题，一次性修复：

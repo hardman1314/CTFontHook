@@ -152,6 +152,17 @@ static bool HandleBottomAppliedClick(HWND hWnd, int x, int y) {
     return true;
 }
 
+// 点击底栏勾选框 → 切换「该游戏下次启动默认隐藏窗口」。
+// 配置写在 DLL 同目录的 FontHook.ini（天然只对该游戏生效），下次启动由 lifecycle 判定生效。
+static bool HandleHideOnStartupToggleClick(HWND hWnd, int x, int y) {
+    if (!PointInRect(x, y, GetBottomBarHideToggleRect()))
+        return false;
+    Config::PickerShowOnStartup = !Config::PickerShowOnStartup;
+    SavePickerConfig();
+    InvalidateUiRect(hWnd, GetBottomBarRect(), 1);
+    return true;
+}
+
 // 点击预览区样例文字 → 行内编辑自定义第 1 行样例。
 static bool HandlePreviewSampleClick(HWND hWnd, int x, int y) {
     if (!PointInRect(x, y, GetPreviewSampleRect()))
@@ -676,6 +687,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
 
+        // 底栏「打开游戏时默认隐藏窗口」勾选框 hover
+        {
+            bool newHideHover = PointInRect(x, y, GetBottomBarHideToggleRect());
+            if (newHideHover != g_hideOnStartupHovered) {
+                g_hideOnStartupHovered = newHideHover;
+                InvalidateUiRect(hWnd, GetBottomBarRect(), 1);
+            }
+        }
+
         // 预览样例文字 hover
         {
             bool newSampleHover = PointInRect(x, y, GetPreviewSampleRect());
@@ -727,6 +747,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             || g_codepageRedirectHovered || g_codepageRedirectPresetHovered
             || g_metricHovered != METRIC_NONE || g_rowApplyHovered || g_currentFontHintHovered
             || g_bottomAppliedHovered
+            || g_hideOnStartupHovered
             || g_previewSampleHovered || g_previewFontMinusHovered || g_previewFontPlusHovered) {
             int oldHovered = g_hoveredIndex;
             bool dirtyTitle = g_closeHovered || g_minHovered || g_headerPillHovered;
@@ -738,7 +759,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             bool dirtyMetrics = g_metricHovered != METRIC_NONE;
             bool dirtyPreview = g_currentFontHintHovered || g_previewSampleHovered ||
                 g_previewFontMinusHovered || g_previewFontPlusHovered;
-            bool dirtyBottom = g_bottomAppliedHovered;
+            bool dirtyBottom = g_bottomAppliedHovered || g_hideOnStartupHovered;
             bool dirtyRowApply = g_rowApplyHovered;
             bool dirtyGuide = ClearGuidePageHoverState();
             g_hoveredIndex = -1; g_closeHovered = false; g_minHovered = false; g_scrollbarHovered = false;
@@ -755,6 +776,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_previewFontMinusHovered = false;
             g_previewFontPlusHovered = false;
             g_bottomAppliedHovered = false;
+            g_hideOnStartupHovered = false;
             if (dirtyTitle) InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
             if (dirtyScrollbar) InvalidateUiRect(hWnd, GetScrollbarAreaRect(), 2);
             if (dirtyCharset) InvalidateUiRect(hWnd, GetCharsetAreaRect(), 1);
@@ -801,7 +823,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             HandlePreviewFontButtonClick(hWnd, x, y) ||
             HandlePreviewSampleClick(hWnd, x, y) ||
             HandleCurrentFontHintClick(hWnd, x, y) ||
-            HandleBottomAppliedClick(hWnd, x, y)) {
+            HandleBottomAppliedClick(hWnd, x, y) ||
+            HandleHideOnStartupToggleClick(hWnd, x, y)) {
             return 0;
         }
 

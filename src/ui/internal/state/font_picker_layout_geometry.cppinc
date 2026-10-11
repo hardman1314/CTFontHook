@@ -84,6 +84,22 @@ static RECT GetBottomBarAppliedRect() {
     return MakeUiRect(SF(8), GetBottomBarTop(), WINDOW_WIDTH / 2, WINDOW_HEIGHT);
 }
 
+// 底栏右侧勾选框「打开游戏时默认隐藏窗口」（右对齐，宽度按文案实测）。
+// 勾选状态直接读 Config::PickerShowOnStartup，不额外存状态。
+static RECT GetBottomBarHideToggleRect() {
+    HDC hdc = GetDC(NULL);
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HGDIOBJ old = SelectObject(hdc, font);
+    SIZE sz = {};
+    GetTextExtentPoint32W(hdc, HIDE_ON_STARTUP_LABEL, (int)wcslen(HIDE_ON_STARTUP_LABEL), &sz);
+    SelectObject(hdc, old);
+    ReleaseDC(NULL, hdc);
+
+    int contentW = SF(13) + SF(6) + sz.cx;   // 方框 + 间距 + 文案
+    int right = WINDOW_WIDTH - SF(13);
+    return MakeUiRect(right - contentW, GetBottomBarTop(), right, WINDOW_HEIGHT);
+}
+
 // 列表行卡片矩形（行高 ITEM_HEIGHT，卡片下方留 5px 行间距）。
 static RECT GetListRowRect(int visibleRow) {
     int top = GetListTop() + visibleRow * ITEM_HEIGHT;

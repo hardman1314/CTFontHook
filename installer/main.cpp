@@ -29,8 +29,18 @@ const wchar_t* kManifestName = L"manifest.ini";
 HWND g_hPathEdit = nullptr;
 HWND g_hArchLabel = nullptr;
 HWND g_hLog = nullptr;
+HWND g_hHint = nullptr;
 
 std::wstring g_selectedExe;
+
+// 界面尺寸以 96 DPI 为设计单位，实际像素经 S() 按系统 DPI 放大，
+// 避免高分屏上字体放大而固定像素布局导致提示文字被裁剪。
+const int kClientW = 620;
+const int kClientH = 450;
+
+int g_dpi = 96;
+int S(int px) { return MulDiv(px, g_dpi, 96); }
+HFONT g_uiFont = nullptr;
 
 // ---------------------------------------------------------------------------
 // 基础工具
@@ -388,63 +398,89 @@ HWND MakeControl(HWND parent, const wchar_t* cls, const wchar_t* text,
         parent, (HMENU)(INT_PTR)id, nullptr, nullptr);
 }
 
+void LayoutControls(HWND hWnd) {
+    RECT rc = {};
+    GetClientRect(hWnd, &rc);
+    const int logTop = 178;
+    const int hintH = 50;
+    const int bottomPad = 14;
+    const int gap = 8;
+    int logH = rc.bottom - S(logTop) - S(hintH) - S(bottomPad) - S(gap);
+    if (logH < S(80)) logH = S(80);
+    if (g_hLog)
+        MoveWindow(g_hLog, S(16), S(logTop), rc.right - S(32), logH, TRUE);
+    if (g_hHint) {
+        int hintTop = S(logTop) + logH + S(gap);
+        int h = rc.bottom - hintTop - S(bottomPad);
+        if (h < S(30)) h = S(30);
+        MoveWindow(g_hHint, S(16), hintTop, rc.right - S(32), h, TRUE);
+    }
+}
+
 void CreateControls(HWND hWnd) {
-    HFONT uiFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    g_uiFont = CreateFontW(-S(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+    HFONT uiFont = g_uiFont;
 
     HWND c = nullptr;
 
     c = MakeControl(hWnd, L"STATIC",
         L"第一步：选择游戏的启动程序(.exe)，工具会自动判断 32/64 位。",
-        WS_CHILD | WS_VISIBLE, 16, 14, 540, 20, IDC_STATIC_TITLE);
+        WS_CHILD | WS_VISIBLE, S(16), S(16), S(588), S(20), IDC_STATIC_TITLE);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"STATIC", L"游戏程序：",
-        WS_CHILD | WS_VISIBLE, 16, 44, 80, 20, IDC_STATIC_PATHLABEL);
+        WS_CHILD | WS_VISIBLE, S(16), S(48), S(80), S(20), IDC_STATIC_PATHLABEL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hPathEdit = MakeControl(hWnd, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY,
-        96, 42, 372, 24, IDC_EDIT_PATH);
+        S(100), S(46), S(400), S(26), IDC_EDIT_PATH);
     SendMessageW(g_hPathEdit, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"BUTTON", L"浏览…",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        476, 42, 88, 25, IDC_BTN_BROWSE);
+        S(510), S(45), S(94), S(28), IDC_BTN_BROWSE);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hArchLabel = MakeControl(hWnd, L"STATIC", L"检测结果：尚未选择",
-        WS_CHILD | WS_VISIBLE, 16, 76, 540, 20, IDC_STATIC_ARCH);
+        WS_CHILD | WS_VISIBLE, S(16), S(80), S(588), S(20), IDC_STATIC_ARCH);
     SendMessageW(g_hArchLabel, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"BUTTON", L"安装",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        16, 108, 150, 34, IDC_BTN_INSTALL);
+        S(16), S(112), S(150), S(36), IDC_BTN_INSTALL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"BUTTON", L"卸载 / 还原",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        176, 108, 150, 34, IDC_BTN_UNINSTALL);
+        S(176), S(112), S(150), S(36), IDC_BTN_UNINSTALL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"BUTTON", L"退出",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        476, 108, 88, 34, IDC_BTN_EXIT);
+        S(510), S(112), S(94), S(36), IDC_BTN_EXIT);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     c = MakeControl(hWnd, L"STATIC", L"日志：",
-        WS_CHILD | WS_VISIBLE, 16, 152, 540, 18, IDC_STATIC_LOGLABEL);
+        WS_CHILD | WS_VISIBLE, S(16), S(158), S(588), S(18), IDC_STATIC_LOGLABEL);
     SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
     g_hLog = MakeControl(hWnd, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        16, 172, 548, 150, IDC_EDIT_LOG);
+        S(16), S(178), S(588), S(200), IDC_EDIT_LOG);
     SendMessageW(g_hLog, WM_SETFONT, (WPARAM)uiFont, TRUE);
 
-    c = MakeControl(hWnd, L"STATIC",
-        L"提示：安装会备份游戏目录原有的 winmm.dll；请先关闭游戏。联网/反作弊游戏请谨慎使用。",
-        WS_CHILD | WS_VISIBLE, 16, 330, 548, 18, IDC_STATIC_HINT);
-    SendMessageW(c, WM_SETFONT, (WPARAM)uiFont, TRUE);
+    g_hHint = MakeControl(hWnd, L"STATIC",
+        L"提示：安装会备份游戏目录原有的 winmm.dll；请先关闭游戏。\n"
+        L"联网 / 反作弊游戏请谨慎使用；卸载 / 还原可自动恢复游戏目录。",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        S(16), S(386), S(588), S(50), IDC_STATIC_HINT);
+    SendMessageW(g_hHint, WM_SETFONT, (WPARAM)uiFont, TRUE);
+
+    LayoutControls(hWnd);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -454,6 +490,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         Log(L"CTFontHook 安装器已就绪。");
         Log(L"请先选择游戏的启动程序(.exe)。");
         return 0;
+
+    case WM_SIZE:
+        if (wp != SIZE_MINIMIZED)
+            LayoutControls(hWnd);
+        return 0;
+
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO* mmi = (MINMAXINFO*)lp;
+        RECT rc = { 0, 0, S(kClientW), S(kClientH) };
+        AdjustWindowRectEx(&rc, (DWORD)GetWindowLongW(hWnd, GWL_STYLE), FALSE,
+            (DWORD)GetWindowLongW(hWnd, GWL_EXSTYLE));
+        mmi->ptMinTrackSize.x = rc.right - rc.left;
+        mmi->ptMinTrackSize.y = rc.bottom - rc.top;
+        return 0;
+    }
 
     case WM_COMMAND:
         switch (LOWORD(wp)) {
@@ -469,6 +520,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_DESTROY:
+        if (g_uiFont) { DeleteObject(g_uiFont); g_uiFont = nullptr; }
         PostQuitMessage(0);
         return 0;
     }
@@ -478,8 +530,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
-    // 与系统 DPI 一致即可，避免高分屏下界面模糊。
+    // 与系统 DPI 一致即可，避免高分屏下界面模糊；布局尺寸随 DPI 缩放。
     SetProcessDPIAware();
+    HDC screenDc = GetDC(nullptr);
+    if (screenDc) {
+        int dpi = GetDeviceCaps(screenDc, LOGPIXELSX);
+        if (dpi > 0) g_dpi = dpi;
+        ReleaseDC(nullptr, screenDc);
+    }
 
     WNDCLASSEXW wc = { sizeof(wc) };
     wc.lpfnWndProc = WndProc;
@@ -489,12 +547,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     RegisterClassExW(&wc);
 
-    RECT rc = { 0, 0, 580, 390 };
-    AdjustWindowRectEx(&rc, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
-        WS_MINIMIZEBOX, FALSE, 0);
+    const DWORD kStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+        WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
+    RECT rc = { 0, 0, S(kClientW), S(kClientH) };
+    AdjustWindowRectEx(&rc, kStyle, FALSE, 0);
 
-    HWND hWnd = CreateWindowExW(0, kWndClass, kAppTitle,
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+    HWND hWnd = CreateWindowExW(0, kWndClass, kAppTitle, kStyle,
         CW_USEDEFAULT, CW_USEDEFAULT,
         rc.right - rc.left, rc.bottom - rc.top,
         nullptr, nullptr, hInstance, nullptr);

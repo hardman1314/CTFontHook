@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-10-11　安装器：修窗口显示（高 DPI 裁剪）+ 补版本信息（任务 B1+B3）
+
+- **任务**：修复安装器窗口「提示内容显示不完整」，并为 EXE 补上开发者版本信息。
+- **根因**：`SetProcessDPIAware()` + `DEFAULT_GUI_FONT`（随系统 DPI 放大）+ 固定像素布局（580×390）
+  → 高分屏下文字变大但控件框不变，提示行被裁剪；且提示原为单行、长度超宽。
+- **改动文件**：
+  - `installer/main.cpp`：新增 DPI 感知的 `g_dpi` / `S(int)` 缩放；控件坐标与字体全部经 `S()` 计算；
+    改用显式 `CreateFontW(-S(13), …, "Microsoft YaHei UI")`；提示改为两行多行 STATIC；
+    窗口客户端 620×450，可调整大小（`WS_THICKFRAME`/`WS_MAXIMIZEBOX` + `WM_SIZE` 时日志区与提示区自适应）；
+    `WM_GETMINMAXINFO` 设最小尺寸；`WM_DESTROY` 释放自建字体。
+  - `installer/version.rc`（新增）：版本资源，`CompanyName=HardMan_Official`、`ProductName=CTFontHook`、
+    `FileVersion=0.1.0.0`（与仓库根 `VERSION` 同步）。
+  - `installer/CTFontHookInstaller.vcxproj`：`<ResourceCompile Include="version.rc" />`。
+- **验证**（实测）：
+  - `scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过。
+  - PowerShell 读取产物 `VersionInfo`：`CompanyName=HardMan_Official`、`ProductName=CTFontHook`、
+    `FileVersion=0.1.0.0`，均已写入 EXE。
+- **遗留**：未在真实高分屏环境下肉眼确认排版；`version.rc` 有意只用 ASCII（规避 rc.exe 源编码问题）。
+
+---
+
 ## 2026-10-11　体验重构：应用按钮移入选中行 + 当前字体提示（任务 A）
 
 - **任务**：把「应用」入口挪到选中行右侧，并把原预览区按钮位置改为「当前字体」提示（可点击跳回该字体）。

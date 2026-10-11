@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-10-11　开源前准备：版权署名 / 第三方声明 / 换行锁定 / 忽略设计图
+
+- **任务**：为新建 GitHub 公开仓库（`hardman1314/CTFontHook`，Public）做发布前清理。
+- **改动文件**（6 个，全部在批准的计划内，均为仓库门面文件）：
+  - `LICENSE.txt:3`：版权行 `Copyright (c) 2026 CTFontHook` → `Copyright (c) 2026 hardman1314`（MIT 需真实著作权人）。
+  - **新增 `.gitattributes`**：仅声明 `*.bat`/`*.cmd` 为 `text eol=crlf`、二进制资源为 `binary`；
+    **未使用 `* text=auto`**（本机 `core.autocrlf=true`、blob 已按 LF 存储，`text=auto` 会重写全部被跟踪文件行尾）。
+  - **新增 `THIRD-PARTY-NOTICES.md`**：登记上游 SimpleFontHook（MIT）、Detours 4.0.1（MIT）、
+    UPX 5.1.1（GPLv2+ 特殊例外）。
+  - `.gitignore`：追加 `/设计图/`（Figma 导出，仅忽略不删除，本地内容保留）。
+  - `README.md`：末尾新增「许可证与第三方」小节。
+  - 本文件：追加本条记录。
+- **明确不改**：所有源码 / 脚本 / 工程文件 / 构建配置；`设计图/` 本地内容；
+  `tools/upx/` 与 `detours*.lib`（构建必需，保留在仓库，仅补许可声明）。
+- **验证**：`git status --short` 确认改动面仅上述文件；`git diff --stat` 复核行数。
+- **偏差 / 限制**：⚠️ 未做真机验证（本次仅文档/配置改动，不涉及编译产物）。
+
+---
+
 ## 2026-10-11　修复安装器窗口图标显示为「系统默认图标」（rc.exe 编码陷阱）
 
 - **任务**：主人反馈「程序的图标完全没更新为 `设计图/ico`」。实测现象：安装器**窗口标题栏 / 任务栏**

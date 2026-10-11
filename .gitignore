@@ -41,3 +41,6 @@ Desktop.ini
 # 编辑器
 .vs/
 .vscode/
+
+# 设计稿（Figma 导出，不纳入版本控制 / 公开仓库）
+/设计图/

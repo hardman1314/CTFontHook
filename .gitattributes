@@ -1,0 +1,15 @@
+# 行尾与编码策略。
+# 刻意不声明 `* text=auto`：本仓库 blob 已按 LF 存储，声明 text=auto 会在下次 add 时
+# 重写全部文件行尾，产生与本次目的无关的大规模改动。
+
+# 批处理脚本必须保持 CRLF：cmd.exe 对 LF 行尾的多行中文批处理会解析错位。
+# 注：脚本内容为 GBK 编码，本规则只控制行尾，不改动字节编码。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源：禁止行尾转换与差异比较。
+*.lib binary
+*.exe binary
+*.dll binary
+*.ico binary
+*.png binary

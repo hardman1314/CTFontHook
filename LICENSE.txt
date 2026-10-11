@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 CTFontHook
+Copyright (c) 2026 hardman1314 (https://github.com/hardman1314)
 
 Forked from SimpleFontHook (https://github.com/SuQiandYing/SimpleFontHook)
 Original SimpleFontHook is Copyright (c) SuQiandYing and licensed under the MIT License.

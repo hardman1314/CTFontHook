@@ -138,3 +138,10 @@ Release 产物：
 - 钩子内部调用真实 Win32 API 时使用保存的 `org*` 指针，避免递归进入钩子。
 - 高频路径不得重复扫描可执行文件、资源归档或字体文件。
 - 代码修改必须同时保持 Win32 与 x64 Release 可编译。
+
+## 许可证与第三方
+
+本项目以 **MIT License** 发布，详见 [LICENSE.txt](LICENSE.txt)。本项目由
+[SimpleFontHook](https://github.com/SuQiandYing/SimpleFontHook) 分支而来。
+仓库内附带的第三方组件（Detours、UPX）的来源与许可证见
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

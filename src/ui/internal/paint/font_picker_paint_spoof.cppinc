@@ -1,20 +1,19 @@
 static void PaintSpoofBar(HDC mem, const RECT& rc)
 {
-    // 背景由兼容设置区统一绘制（PaintCompatBackdrop），此处只画内容。
-    int spTop = GetSpoofTop();
-    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
-    HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
+    // 背景由兼容设置区统一绘制（PaintCompatBackdrop），此处只画「伪装」行内容。
+    int py = GetCompatSpoofRowTop();
+    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
     HGDIOBJ oldSpFont = SelectObject(mem, spFont);
 
-    int py = spTop + (SPOOF_HEIGHT - 24) / 2;
-    int px = 13;
+    int px = COMPAT_MARGIN_L;
 
     {
         const wchar_t* label = g_spoofEnabled ? L"\x4F2A\x88C5: \x5F00" : L"\x4F2A\x88C5: \x5173";
         SelectObject(mem, spFontBold);
         SIZE sz; GetTextExtentPoint32W(mem, label, (int)wcslen(label), &sz);
         int bw = sz.cx + 16;
-        RECT btnRc = { px, py, px + bw, py + 24 };
+        RECT btnRc = { px, py, px + bw, py + COMPAT_ROW_H };
         COLORREF bgCol = g_spoofEnabled ? MixColor(COL_BTN_BG, COL_DOT_OK, 0.28f) : COL_BTN_BG;
         if (g_spoofToggleHovered)
             bgCol = g_spoofEnabled ? MixColor(COL_BTN_BG, COL_DOT_OK, 0.42f) : COL_BTN_HOV;
@@ -27,19 +26,22 @@ static void PaintSpoofBar(HDC mem, const RECT& rc)
 
     SelectObject(mem, spFont);
     {
-        const wchar_t* charsetLabel = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
-        SIZE sz; GetTextExtentPoint32W(mem, charsetLabel, (int)wcslen(charsetLabel), &sz);
+        // 目标字符集（下拉样式药丸，含 ▾，点击循环切换）
+        std::wstring pillText = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
+        pillText += L"  \x25BE";
+        SIZE sz; GetTextExtentPoint32W(mem, pillText.c_str(), (int)pillText.size(), &sz);
         int bw = sz.cx + 18;
-        RECT pillRc = { px, py, px + bw, py + 24 };
+        RECT pillRc = { px, py, px + bw, py + COMPAT_ROW_H };
         COLORREF bgCol = g_spoofCharsetHovered ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
         FillRoundRect(mem, pillRc, 6, bgCol);
         DrawRoundRectOutline(mem, pillRc, 6, COL_ACCENT2);
         SetTextColor(mem, COL_TEXT_PILL);
-        DrawTextW(mem, charsetLabel, -1, &pillRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(mem, pillText.c_str(), -1, &pillRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         px += bw + 8;
     }
 
     {
+        // 右端：当前目标字符集提示
         wchar_t hint[96] = {};
         COLORREF hintCol = COL_TEXT_HINT;
         if (g_spoofEnabled && g_spoofRuntimeReplaceEnabled) {
@@ -56,8 +58,9 @@ static void PaintSpoofBar(HDC mem, const RECT& rc)
                 GetCharsetDisplayName(g_spoofCharsets[g_spoofCharsetIdx].value));
         }
         SetTextColor(mem, hintCol);
-        RECT hintRc = { px, py, rc.right - 8, py + 24 };
-        DrawTextW(mem, hint, -1, &hintRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        RECT hintRc = { px, py, WINDOW_WIDTH - COMPAT_MARGIN_R, py + COMPAT_ROW_H };
+        DrawTextW(mem, hint, -1, &hintRc,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
     }
 
     SelectObject(mem, oldSpFont);

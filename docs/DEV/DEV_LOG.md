@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-10-11　界面重构 批次2「兼容设置区合并重排」（设计稿复刻）
+
+- **任务**：把 伪装 + 映射/转码 + 字形微调 合并为**一个「兼容设置」区**，按设计稿几何重排
+  （区高 225，左右内边距 13/13，行高 23，行间距 5）。**外观按设计、功能一个不丢**。
+- **设计行几何**（自区顶向下）：标题行 +8；伪装行 +30；映射/转码行 +58；字形微调子标题行 +88；
+  字号网格 +118 / +146；粗细行 +176；目标/参照行 +205。
+- **改动文件**（8 改 + 1 新建，全部在计划内）：
+  - `state/font_picker_layout_geometry.cppinc`：新增 `COMPAT_ROW_H/MARGIN_L/MARGIN_R/COL_GAP`
+    与 `GetCompat*RowTop()` 系列；`GetSpoofAreaRect`/`GetTextSubAreaRect`/`GetMetricsAreaRect`
+    改指向新行；`SpoofBarHitTest`（行 1）与 `TextSubstitutionHitTest`（行 2，映射/转码两组）
+    按新行重写（9px、药丸预留 `▾` 宽度）。
+  - `state/font_picker_metric_layout.cppinc`：`GetMetricsRects` 重写为三列×两行网格；
+    粗细行改为标签 + 数值框（无 −/+，贴合设计稿）+ 设为参照 + 按参照计算；命中纵界改兼容设置区。
+  - `paint/font_picker_paint_compat.cppinc`（**新建**）：`DrawSlidersIcon` + `PaintCompatHeader`
+    （标题行「兼容设置 / COMPATIBILITY」+ 字形微调子标题行「A / 字形微调 / ↺ 清空调整」）。
+  - `paint/font_picker_paint_spoof.cppinc`：行 1 重绘（伪装开关 + 目标字符集下拉 + 右侧状态提示）。
+  - `paint/font_picker_paint_text_substitution.cppinc`：行 2 重绘（映射组 + 转码组）。
+  - `paint/font_picker_paint_metrics.cppinc`：按新几何绘制网格与粗细行；**移除重复的「清空调整」**
+    （改由 `PaintCompatHeader` 绘制）；目标/参照行改为整行纯文本（左「目标」右「参照」，无边框）。
+  - `font_picker_paint.cppinc`：挂接 `PaintCompatHeader`。
+  - `input/font_picker_wndproc.cppinc`：`HandleMetricClick` 纵界改兼容设置区；
+    伪装/文本替换悬停门限改新行；滚轮纵界改兼容设置区。
+  - `src/CTFontHook.vcxproj`：登记 `font_picker_paint_compat.cppinc`。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验），
+  `x64\Release\winmm.dll` 286720 字节、`Release\winmm.dll` 259584 字节。
+- **偏差说明（保留功能优先）**：设计稿「粗细」为数值框（无 −/+），此处按设计外观实现，
+  数值仍可点击行内编辑（权重步进按钮取消，功能以输入方式保留）。
+- **遗留**：批次 3（海报背景图 RCDATA+WIC）待做；**观感需主人真机验证**。
+  详见 [`features/界面重构-设计稿复刻.md`](features/界面重构-设计稿复刻.md)。
+
 ## 2026-10-11　界面重构 批次1「窗口骨架与配色」（设计稿复刻）
 
 - **任务**：按 Figma 设计稿（`设计图/`）把字体选择窗口整体重绘为「深海蓝」暗色面板，

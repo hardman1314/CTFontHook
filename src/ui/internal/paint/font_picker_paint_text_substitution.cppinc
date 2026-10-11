@@ -1,40 +1,54 @@
 static void PaintTextSubstitutionBar(HDC mem, const RECT& rc)
 {
-    // 背景由兼容设置区统一绘制（PaintCompatBackdrop），此处只画内容。
-    int top = GetTextSubTop();
-    HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
+    // 背景由兼容设置区统一绘制（PaintCompatBackdrop），此处只画「映射 / 转码」行内容。
+    (void)rc;
+    int py = GetCompatTextSubRowTop();
+    HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
     HGDIOBJ oldFont = SelectObject(mem, fontBold);
 
-    int py = top + (TEXTSUB_HEIGHT - 24) / 2;
-
-    auto drawButton = [&](const wchar_t* label, bool active, bool hovered, COLORREF accent, HFONT useFont, int& px) {
-        HGDIOBJ oldBtnFont = SelectObject(mem, useFont);
+    auto drawToggle = [&](int& px, const wchar_t* label, bool active, bool hovered, COLORREF accent) {
+        SelectObject(mem, fontBold);
         SIZE sz; GetTextExtentPoint32W(mem, label, (int)wcslen(label), &sz);
         int bw = sz.cx + 16;
-        RECT btnRc = { px, py, px + bw, py + 24 };
+        RECT btnRc = { px, py, px + bw, py + COMPAT_ROW_H };
         COLORREF bgCol = active ? MixColor(COL_BTN_BG, accent, 0.28f) : COL_BTN_BG;
         if (hovered) bgCol = active ? MixColor(COL_BTN_BG, accent, 0.42f) : COL_BTN_HOV;
         FillRoundRect(mem, btnRc, 6, bgCol);
         DrawRoundRectOutline(mem, btnRc, 6, active ? accent : COL_BORDER);
         SetTextColor(mem, active ? accent : COL_TEXT_METRIC);
         DrawTextW(mem, label, -1, &btnRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(mem, oldBtnFont);
         px += bw + 8;
     };
 
-    int px = 13;
-    const wchar_t* toggleLabel = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
-    drawButton(toggleLabel, g_textSubstitutionEnabled, g_textSubstitutionHovered, COL_ACCENT2, fontBold, px);
+    auto drawChoice = [&](int& px, const wchar_t* label, bool active, bool hovered, COLORREF accent) {
+        SelectObject(mem, font);
+        std::wstring text = label;
+        text += L"  \x25BE";
+        SIZE sz; GetTextExtentPoint32W(mem, text.c_str(), (int)text.size(), &sz);
+        int bw = sz.cx + 16;
+        RECT pillRc = { px, py, px + bw, py + COMPAT_ROW_H };
+        COLORREF bgCol = hovered ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
+        FillRoundRect(mem, pillRc, 6, bgCol);
+        DrawRoundRectOutline(mem, pillRc, 6, active ? accent : COL_BORDER);
+        SetTextColor(mem, active ? accent : COL_TEXT_PILL);
+        DrawTextW(mem, text.c_str(), -1, &pillRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        px += bw + 8;
+    };
 
-    drawButton(g_textSubstitutionModes[g_textSubstitutionModeIdx].label, g_textSubstitutionEnabled,
-        g_textSubstitutionModeHovered, COL_ACCENT2, font, px);
+    // 组 1：映射（开关 + 模式）
+    int px = COMPAT_MARGIN_L;
+    drawToggle(px, g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173",
+        g_textSubstitutionEnabled, g_textSubstitutionHovered, COL_ACCENT2);
+    drawChoice(px, g_textSubstitutionModes[g_textSubstitutionModeIdx].label,
+        g_textSubstitutionEnabled, g_textSubstitutionModeHovered, COL_ACCENT2);
 
-    px += 2;
-    const wchar_t* redirectLabel = g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173";
-    drawButton(redirectLabel, g_codepageRedirectEnabled, g_codepageRedirectHovered, COL_ACCENT3, fontBold, px);
-    drawButton(g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label, g_codepageRedirectEnabled,
-        g_codepageRedirectPresetHovered, COL_ACCENT3, font, px);
+    // 组 2：转码（开关 + 预设）
+    px = GetCompatRow2SecondX();
+    drawToggle(px, g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173",
+        g_codepageRedirectEnabled, g_codepageRedirectHovered, COL_ACCENT3);
+    drawChoice(px, g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label,
+        g_codepageRedirectEnabled, g_codepageRedirectPresetHovered, COL_ACCENT3);
 
     SelectObject(mem, oldFont);
 }

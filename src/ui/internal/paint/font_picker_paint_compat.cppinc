@@ -1,0 +1,76 @@
+// 「兼容设置」区标题行 + 「字形微调」子标题行（设计稿）。
+// 底板由 PaintCompatBackdrop 统一绘制；伪装/映射/转码/字形各行由各自分片绘制。
+
+static void DrawSlidersIcon(HDC mem, int x, int y, int s, COLORREF col) {
+    HPEN pen = CreatePen(PS_SOLID, 1, col);
+    HGDIOBJ oldPen = SelectObject(mem, pen);
+    HGDIOBJ oldBr = SelectObject(mem, GetStockObject(NULL_BRUSH));
+    int y1 = y + s * 3 / 10;
+    int y2 = y + s * 7 / 10;
+    MoveToEx(mem, x, y1, NULL); LineTo(mem, x + s, y1);
+    MoveToEx(mem, x, y2, NULL); LineTo(mem, x + s, y2);
+    SelectObject(mem, oldBr);
+    SelectObject(mem, oldPen);
+    DeleteObject(pen);
+
+    int r = max(2, s / 5);
+    HBRUSH br = CreateSolidBrush(col);
+    HGDIOBJ oldBr2 = SelectObject(mem, br);
+    HGDIOBJ oldPen2 = SelectObject(mem, GetStockObject(NULL_PEN));
+    Ellipse(mem, x + s * 2 / 5 - r, y1 - r, x + s * 2 / 5 + r, y1 + r);
+    Ellipse(mem, x + s * 3 / 5 - r, y2 - r, x + s * 3 / 5 + r, y2 + r);
+    SelectObject(mem, oldPen2);
+    SelectObject(mem, oldBr2);
+    DeleteObject(br);
+}
+
+static void PaintCompatHeader(HDC mem, const RECT& rc)
+{
+    // 标题行：滑块图标 + 「兼容设置」 + 右对齐「COMPATIBILITY」
+    {
+        int top = GetCompatTitleRowTop();
+        HFONT titleFont = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
+        HGDIOBJ oldFont = SelectObject(mem, titleFont);
+        DrawSlidersIcon(mem, COMPAT_MARGIN_L, top, SF(14), COL_TEXT_LABEL);
+        SetTextColor(mem, COL_TEXT_LABEL);
+        RECT titleRc = { COMPAT_MARGIN_L + SF(14) + SF(6), top, rc.right / 2, top + 15 };
+        DrawTextW(mem, L"\x517C\x5BB9\x8BBE\x7F6E", -1, &titleRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE);  // 兼容设置
+
+        HFONT subFont = GetCachedPickerFont(L"Segoe UI", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
+        SelectObject(mem, subFont);
+        SetTextColor(mem, COL_TEXT_HINT);
+        RECT capRc = { rc.right / 2, top, WINDOW_WIDTH - COMPAT_MARGIN_R, top + 15 };
+        DrawTextW(mem, L"COMPATIBILITY", -1, &capRc,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(mem, oldFont);
+    }
+
+    // 子标题行：A 图标 + 「字形微调」 + 右端「清空调整」按钮
+    {
+        int top = GetCompatSubTitleTop();
+        HFONT subFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+        HGDIOBJ oldFont = SelectObject(mem, subFont);
+        SetTextColor(mem, COL_TEXT_METRIC);
+        RECT aRc = { COMPAT_MARGIN_L, top, COMPAT_MARGIN_L + SF(12), top + COMPAT_ROW_H };
+        DrawTextW(mem, L"A", -1, &aRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        RECT subRc = { COMPAT_MARGIN_L + SF(16), top, rc.right / 2, top + COMPAT_ROW_H };
+        DrawTextW(mem, L"\x5B57\x5F62\x5FAE\x8C03", -1, &subRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE);  // 字形微调
+        SelectObject(mem, oldFont);
+
+        // 清空调整（悬停高亮）
+        MetricsRects mr;
+        GetMetricsRects(mr);
+        bool hov = (g_metricHovered == METRIC_RESET_METRICS);
+        FillRoundRect(mem, mr.resetBtn, 6, hov ? COL_HOVER_BG : COL_BTN_BG);
+        DrawRoundRectOutline(mem, mr.resetBtn, 6, hov ? COL_ACCENT : COL_BORDER);
+        HFONT btnFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+        SelectObject(mem, btnFont);
+        SetTextColor(mem, hov ? COL_ACCENT : COL_TEXT_BTN);
+        RECT resetRc = mr.resetBtn;
+        DrawTextW(mem, L"\x21BA  \x6E05\x7A7A\x8C03\x6574", -1, &resetRc,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE);  // ↺ 清空调整
+        SelectObject(mem, oldFont);
+    }
+}

@@ -46,19 +46,36 @@ static RECT GetCharsetAreaRect() {
 static RECT GetCompatAreaRect() {
     return MakeUiRect(0, GetCompatTop(), WINDOW_WIDTH, GetPreviewTop());
 }
+
+// 「兼容设置」区内部行（严格对齐设计稿：行高 23，自区顶向下偏移，各行间距 5）。
+static const int COMPAT_ROW_H    = 23;
+static const int COMPAT_MARGIN_L = 13;
+static const int COMPAT_MARGIN_R = 13;
+static const int COMPAT_COL_GAP  = 8;
+static int GetCompatTitleRowTop()   { return GetCompatTop() + 8; }    // 兼容设置 / COMPATIBILITY
+static int GetCompatSpoofRowTop()   { return GetCompatTop() + 30; }   // 伪装 + 目标字符集
+static int GetCompatTextSubRowTop() { return GetCompatTop() + 58; }   // 映射 / 转码
+static int GetCompatSubTitleTop()   { return GetCompatTop() + 88; }   // 字形微调 + 清空调整
+static int GetCompatGridTop(int r)  { return GetCompatTop() + 118 + r * 28; }  // 字号网格（两行）
+static int GetCompatWeightRowTop()  { return GetCompatTop() + 176; }  // 粗细 + 设为参照 + 按参照计算
+static int GetCompatRefRowTop()     { return GetCompatTop() + 205; }  // 目标 / 参照
+static int GetCompatRow2SecondX()   { return WINDOW_WIDTH / 2 - 4; }  // 映射/转码 第二组左边界
+
 static RECT GetHintAreaRect() {
     return MakeUiRect(0, GetHintTop(), WINDOW_WIDTH, GetHintTop() + HINT_HEIGHT);
 }
 static RECT GetSpoofAreaRect() {
-    int top = GetSpoofTop();
-    return MakeUiRect(0, top, WINDOW_WIDTH, top + SPOOF_HEIGHT);
+    int top = GetCompatSpoofRowTop();
+    return MakeUiRect(0, top, WINDOW_WIDTH, top + COMPAT_ROW_H);
 }
 static RECT GetTextSubAreaRect() {
-    int top = GetTextSubTop();
-    return MakeUiRect(0, top, WINDOW_WIDTH, top + TEXTSUB_HEIGHT);
+    int top = GetCompatTextSubRowTop();
+    return MakeUiRect(0, top, WINDOW_WIDTH, top + COMPAT_ROW_H);
 }
 static RECT GetListAreaRect() { return MakeUiRect(0, GetListTop(), WINDOW_WIDTH, GetListBottom()); }
-static RECT GetMetricsAreaRect() { return MakeUiRect(0, GetMetricsTop(), WINDOW_WIDTH, GetPreviewTop()); }
+static RECT GetMetricsAreaRect() {
+    return MakeUiRect(0, GetCompatSubTitleTop(), WINDOW_WIDTH, GetPreviewTop());
+}
 static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, GetBottomBarTop()); }
 static RECT GetBottomBarRect() { return MakeUiRect(0, GetBottomBarTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
 
@@ -392,17 +409,16 @@ static int CharsetHitTest(int x, int y, int* outTotalWidth = nullptr) {
     return result;
 }
 
-// Spoof bar hit test: returns 0=toggle, 1=target charset, -1=none.
+// Spoof row hit test: returns 0=toggle, 1=target charset, -1=none.
 static int SpoofBarHitTest(int x, int y) {
-    int spTop = GetSpoofTop();
-    int py = spTop + (SPOOF_HEIGHT - 24) / 2;
-    if (y < py || y >= py + 24) return -1;
+    int rowTop = GetCompatSpoofRowTop();
+    if (y < rowTop || y >= rowTop + COMPAT_ROW_H) return -1;
 
     HDC hdc = GetDC(NULL);
-    HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
 
-    int px = 13;
+    int px = COMPAT_MARGIN_L;
     int result = -1;
 
     // Toggle
@@ -411,19 +427,19 @@ static int SpoofBarHitTest(int x, int y) {
         const wchar_t* label = g_spoofEnabled ? L"伪装: 开" : L"伪装: 关";  // 伪装: 开/关
         SIZE sz; GetTextExtentPoint32W(hdc, label, (int)wcslen(label), &sz);
         int bw = sz.cx + 16;
-        RECT r = { px, py, px + bw, py + 24 };
+        RECT r = { px, rowTop, px + bw, rowTop + COMPAT_ROW_H };
         if (x >= r.left && x < r.right) result = 0;
         px += bw + 8;
         SelectObject(hdc, old);
     }
 
-    // Target charset
+    // Target charset（含下拉箭头预留）
     {
         HGDIOBJ old = SelectObject(hdc, spFont);
         const wchar_t* charsetLabel = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
         SIZE sz; GetTextExtentPoint32W(hdc, charsetLabel, (int)wcslen(charsetLabel), &sz);
-        int bw = sz.cx + 18;
-        RECT r = { px, py, px + bw, py + 24 };
+        int bw = sz.cx + 18 + SF(12);
+        RECT r = { px, rowTop, px + bw, rowTop + COMPAT_ROW_H };
         if (result < 0 && x >= r.left && x < r.right) result = 1;
         SelectObject(hdc, old);
     }
@@ -433,44 +449,55 @@ static int SpoofBarHitTest(int x, int y) {
 }
 
 static int TextSubstitutionHitTest(int x, int y) {
-    int top = GetTextSubTop();
-    int py = top + (TEXTSUB_HEIGHT - 24) / 2;
-    if (y < py || y >= py + 24) return -1;
+    int rowTop = GetCompatTextSubRowTop();
+    if (y < rowTop || y >= rowTop + COMPAT_ROW_H) return -1;
 
     HDC hdc = GetDC(NULL);
-    HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
-    HGDIOBJ old = SelectObject(hdc, fontBold);
-
-    int px = 13;
+    HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
     int result = -1;
-    const wchar_t* toggleLabel = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
-    SIZE sz; GetTextExtentPoint32W(hdc, toggleLabel, (int)wcslen(toggleLabel), &sz);
-    RECT r = { px, py, px + sz.cx + 16, py + 24 };
-    if (x >= r.left && x < r.right) result = 0;
-    px = r.right + 8;
+    SIZE sz;
 
-    SelectObject(hdc, font);
-    const wchar_t* modeLabel = g_textSubstitutionModes[g_textSubstitutionModeIdx].label;
-    GetTextExtentPoint32W(hdc, modeLabel, (int)wcslen(modeLabel), &sz);
-    r = { px, py, px + sz.cx + 16, py + 24 };
-    if (result < 0 && x >= r.left && x < r.right) result = 1;
-    px = r.right + 10;
+    // 组 1：映射（开关 + 模式）
+    int px = COMPAT_MARGIN_L;
+    {
+        HGDIOBJ old = SelectObject(hdc, fontBold);
+        const wchar_t* toggleLabel = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
+        GetTextExtentPoint32W(hdc, toggleLabel, (int)wcslen(toggleLabel), &sz);
+        RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
+        if (x >= r.left && x < r.right) result = 0;
+        px = r.right + 8;
+        SelectObject(hdc, old);
+    }
+    {
+        HGDIOBJ old = SelectObject(hdc, font);
+        const wchar_t* modeLabel = g_textSubstitutionModes[g_textSubstitutionModeIdx].label;
+        GetTextExtentPoint32W(hdc, modeLabel, (int)wcslen(modeLabel), &sz);
+        RECT r = { px, rowTop, px + sz.cx + 16 + SF(12), rowTop + COMPAT_ROW_H };
+        if (result < 0 && x >= r.left && x < r.right) result = 1;
+        SelectObject(hdc, old);
+    }
 
-    SelectObject(hdc, fontBold);
-    const wchar_t* redirectLabel = g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173";
-    GetTextExtentPoint32W(hdc, redirectLabel, (int)wcslen(redirectLabel), &sz);
-    r = { px, py, px + sz.cx + 16, py + 24 };
-    if (result < 0 && x >= r.left && x < r.right) result = 2;
-    px = r.right + 8;
+    // 组 2：转码（开关 + 预设）
+    px = GetCompatRow2SecondX();
+    {
+        HGDIOBJ old = SelectObject(hdc, fontBold);
+        const wchar_t* redirectLabel = g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173";
+        GetTextExtentPoint32W(hdc, redirectLabel, (int)wcslen(redirectLabel), &sz);
+        RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
+        if (result < 0 && x >= r.left && x < r.right) result = 2;
+        px = r.right + 8;
+        SelectObject(hdc, old);
+    }
+    {
+        HGDIOBJ old = SelectObject(hdc, font);
+        const wchar_t* redirectPreset = g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label;
+        GetTextExtentPoint32W(hdc, redirectPreset, (int)wcslen(redirectPreset), &sz);
+        RECT r = { px, rowTop, px + sz.cx + 16 + SF(12), rowTop + COMPAT_ROW_H };
+        if (result < 0 && x >= r.left && x < r.right) result = 3;
+        SelectObject(hdc, old);
+    }
 
-    SelectObject(hdc, font);
-    const wchar_t* redirectPreset = g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label;
-    GetTextExtentPoint32W(hdc, redirectPreset, (int)wcslen(redirectPreset), &sz);
-    r = { px, py, px + sz.cx + 16, py + 24 };
-    if (result < 0 && x >= r.left && x < r.right) result = 3;
-
-    SelectObject(hdc, old);
     ReleaseDC(NULL, hdc);
     return result;
 }

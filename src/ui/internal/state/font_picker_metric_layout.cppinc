@@ -41,49 +41,66 @@ static bool CreatePatchedFontCloneFromCurrentTarget();
 static void ClearMetricCloneFonts();
 
 static void GetMetricsRects(MetricsRects& r) {
-    int top = GetMetricsTop() + 8;
-    int margin = 10;
-    int gap = 8;
-    int rowGap = 7;
-    int rowH = 24;
-    int colW = max(120, (WINDOW_WIDTH - margin * 2 - gap * 2) / 3);
+    int margin = COMPAT_MARGIN_L;
+    int contentW = WINDOW_WIDTH - margin - COMPAT_MARGIN_R;
+    int colGap = COMPAT_COL_GAP;
+    int colW = (contentW - colGap * 2) / 3;
+    int rowH = COMPAT_ROW_H;
 
-    auto makeStepper = [&](int col, int row, const wchar_t*, int hitDown, int hitUp) -> MetricStepperRects {
-        int x = margin + col * (colW + gap);
-        int y = top + row * (rowH + rowGap);
-        int labelW = 34;
-        int btn = 22;
-        int valueW = max(46, colW - labelW - btn * 2 - gap * 3);
+    // 单个步进控件：标签 − 数值 +（尺寸随单元宽度自适应）
+    auto makeStepper = [&](int x0, int rowTop, int cellW, int hitDown, int hitUp) -> MetricStepperRects {
+        int labelW = 22, gapA = 5, btnW = 18, gapB = 4;
+        int valueW = cellW - labelW - btnW * 2 - gapA - gapB * 2;
+        if (valueW < 22) valueW = 22;
         MetricStepperRects s = {};
-        s.label = { x, y, x + labelW, y + rowH };
-        x += labelW + gap;
-        s.down = { x, y, x + btn, y + rowH };
-        x += btn + gap;
-        s.value = { x, y, x + valueW, y + rowH };
-        x += valueW + gap;
-        s.up = { x, y, x + btn, y + rowH };
+        int x = x0;
+        s.label = { x, rowTop, x + labelW, rowTop + rowH };
+        x += labelW + gapA;
+        s.down = { x, rowTop, x + btnW, rowTop + rowH };
+        x += btnW + gapB;
+        s.value = { x, rowTop, x + valueW, rowTop + rowH };
+        x += valueW + gapB;
+        s.up = { x, rowTop, x + btnW, rowTop + rowH };
         s.hitDown = hitDown;
         s.hitUp = hitUp;
         return s;
     };
 
-    r.width = makeStepper(0, 0, L"W", METRIC_WIDTH_DOWN, METRIC_WIDTH_UP);
-    r.height = makeStepper(1, 0, L"H", METRIC_HEIGHT_DOWN, METRIC_HEIGHT_UP);
-    r.spacing = makeStepper(2, 0, L"Gap", METRIC_SPACING_DOWN, METRIC_SPACING_UP);
-    r.ascent = makeStepper(0, 1, L"Asc", METRIC_ASCENT_DOWN, METRIC_ASCENT_UP);
-    r.descent = makeStepper(1, 1, L"Desc", METRIC_DESCENT_DOWN, METRIC_DESCENT_UP);
-    r.line = makeStepper(2, 1, L"Line", METRIC_LINE_DOWN, METRIC_LINE_UP);
-    r.weight = makeStepper(0, 2, L"Wgt", METRIC_WEIGHT_DOWN, METRIC_WEIGHT_UP);
-    int row2 = top + 2 * (rowH + rowGap);
-    int row3 = top + 3 * (rowH + rowGap);
-    r.referenceBtn = { margin + colW + gap, row2, margin + colW * 2 + gap, row2 + rowH };
-    r.autoBtn = { margin + colW * 2 + gap * 2, row2, WINDOW_WIDTH - margin, row2 + rowH };
-    r.referenceInfo = { margin, row3, margin + colW * 2 + gap, row3 + rowH };
-    r.resetBtn = { margin + colW * 2 + gap * 2, row3, WINDOW_WIDTH - margin, row3 + rowH };
+    // 字号网格：字宽/字高/字距 + 上行/下行/行距（三列 × 两行）
+    r.width   = makeStepper(margin, GetCompatGridTop(0), colW, METRIC_WIDTH_DOWN, METRIC_WIDTH_UP);
+    r.height  = makeStepper(margin + (colW + colGap), GetCompatGridTop(0), colW, METRIC_HEIGHT_DOWN, METRIC_HEIGHT_UP);
+    r.spacing = makeStepper(margin + (colW + colGap) * 2, GetCompatGridTop(0), colW, METRIC_SPACING_DOWN, METRIC_SPACING_UP);
+    r.ascent  = makeStepper(margin, GetCompatGridTop(1), colW, METRIC_ASCENT_DOWN, METRIC_ASCENT_UP);
+    r.descent = makeStepper(margin + (colW + colGap), GetCompatGridTop(1), colW, METRIC_DESCENT_DOWN, METRIC_DESCENT_UP);
+    r.line    = makeStepper(margin + (colW + colGap) * 2, GetCompatGridTop(1), colW, METRIC_LINE_DOWN, METRIC_LINE_UP);
+
+    // 粗细行：粗细（标签 + 数值框，设计稿无 −/+ 步进）+ 设为参照 + 按参照计算
+    int wTop = GetCompatWeightRowTop();
+    int wLabelW = 18;
+    int wGapA = 7;
+    int wInputW = 51;
+    r.weight = {};
+    r.weight.label = { margin, wTop, margin + wLabelW, wTop + rowH };
+    r.weight.value = { margin + wLabelW + wGapA, wTop, margin + wLabelW + wGapA + wInputW, wTop + rowH };
+    int gap = 7;
+    int btnX = margin + wLabelW + wGapA + wInputW + gap;
+    int btnW = (WINDOW_WIDTH - COMPAT_MARGIN_R - btnX - gap) / 2;
+    r.referenceBtn = { btnX, wTop, btnX + btnW, wTop + rowH };
+    r.autoBtn = { btnX + btnW + gap, wTop, WINDOW_WIDTH - COMPAT_MARGIN_R, wTop + rowH };
+
+    // 清空调整（字形微调子标题行右端）
+    int st = GetCompatSubTitleTop();
+    int resetW = 66;
+    r.resetBtn = { WINDOW_WIDTH - COMPAT_MARGIN_R - resetW, st + 2,
+        WINDOW_WIDTH - COMPAT_MARGIN_R, st + 2 + 19 };
+
+    // 目标 / 参照（整行；绘制时左「目标」右「参照」）
+    int refTop = GetCompatRefRowTop();
+    r.referenceInfo = { margin, refTop, WINDOW_WIDTH - COMPAT_MARGIN_R, refTop + 14 };
 }
 
 static int MetricsHitTest(int x, int y) {
-    if (y < GetMetricsTop() || y >= GetPreviewTop()) return METRIC_NONE;
+    if (y < GetCompatTop() || y >= GetPreviewTop()) return METRIC_NONE;
 
     MetricsRects r;
     GetMetricsRects(r);
@@ -99,7 +116,7 @@ static int MetricsHitTest(int x, int y) {
 }
 
 static MetricValueKind MetricValueHitTest(int x, int y) {
-    if (y < GetMetricsTop() || y >= GetPreviewTop()) return METRIC_VALUE_NONE;
+    if (y < GetCompatTop() || y >= GetPreviewTop()) return METRIC_VALUE_NONE;
 
     MetricsRects r;
     GetMetricsRects(r);

@@ -84,33 +84,36 @@ static void PaintMetricsBar(HDC mem, const RECT& rc)
 
     int weight = GetFontWeightValue();
     wsprintfW(valueBuf, L"%d", weight);
-    drawStepper(mr.weight, L"\x7C97\x7EC6", valueBuf, Config::EnableFontWeight,
-        weight > FONT_WEIGHT_MIN, weight < FONT_WEIGHT_MAX);
+    {
+        SelectObject(mem, mtBold);
+        SetTextColor(mem, Config::EnableFontWeight ? COL_ACCENT : COL_TEXT_METRIC);
+        RECT labelRc = mr.weight.label;
+        DrawTextW(mem, L"\x7C97\x7EC6", -1, &labelRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(mem, mtFont);
+        drawMetricValue(mr.weight.value, valueBuf, Config::EnableFontWeight);
+    }
 
-    bool hasDetailedMetrics =
-        Config::EnableFontWidthScale || Config::EnableFontHeightScale ||
-        Config::EnableFontCharSpacing || Config::EnableFontVerticalMetrics ||
-        Config::EnableFontLineSpacing || Config::EnableFontWeight ||
-        widthPct != 100 || heightPct != 100 || spacing != 0 ||
-        ascent != 880 || descent != -120 || line != 0 || weight != FW_NORMAL;
     drawWideButton(mr.referenceBtn, L"\x8BBE\x4E3A\x53C2\x7167", METRIC_SET_REFERENCE, !GetSelectedFontName().empty());
     drawWideButton(mr.autoBtn, L"\x6309\x53C2\x7167\x8BA1\x7B97", METRIC_AUTO_VERTICAL, true);
-    drawWideButton(mr.resetBtn, L"\x6E05\x7A7A\x8C03\x6574", METRIC_RESET_METRICS, hasDetailedMetrics);
 
-    std::wstring refFace = GetMetricReferenceFont();
-    std::wstring targetFace = GetUserVisibleFontName(GetMetricTargetFont());
-    if (!targetFace.empty())
-        swprintf_s(valueBuf, L"\x76EE\x6807: %.18s  \x53C2\x7167: %.18s", targetFace.c_str(), refFace.c_str());
-    else
-        swprintf_s(valueBuf, L"\x53C2\x7167: %.48s", refFace.c_str());
-    FillRoundRect(mem, mr.referenceInfo, 6, COL_INPUT_BG);
-    DrawRoundRectOutline(mem, mr.referenceInfo, 6, COL_BORDER);
-    SelectObject(mem, GetCachedPickerFont(L"Microsoft YaHei", SF(8), 0, FW_NORMAL, DEFAULT_CHARSET));
-    SetTextColor(mem, COL_TEXT_FAINT);
-    RECT refRc = mr.referenceInfo;
-    refRc.left += 8;
-    refRc.right -= 8;
-    DrawTextW(mem, valueBuf, -1, &refRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    // 目标 / 参照：整行纯文本，左「目标」右「参照」（设计稿无边框）。
+    {
+        std::wstring refFace = GetMetricReferenceFont();
+        std::wstring targetFace = GetUserVisibleFontName(GetMetricTargetFont());
+        SelectObject(mem, GetCachedPickerFont(L"Microsoft YaHei", SF(8), 0, FW_NORMAL, DEFAULT_CHARSET));
+        SetTextColor(mem, COL_TEXT_HINT);
+        RECT refRc = mr.referenceInfo;
+        RECT leftRc = { refRc.left, refRc.top, refRc.left + (refRc.right - refRc.left) / 2, refRc.bottom };
+        RECT rightRc = { leftRc.right, refRc.top, refRc.right, refRc.bottom };
+        if (!targetFace.empty()) {
+            swprintf_s(valueBuf, L"\x76EE\x6807: %.18s", targetFace.c_str());
+            DrawTextW(mem, valueBuf, -1, &leftRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        }
+        swprintf_s(valueBuf, L"\x53C2\x7167: %.18s", refFace.c_str());
+        DrawTextW(mem, valueBuf, -1, &rightRc,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
 
     SelectObject(mem, oldMtFont);
 }

@@ -4,6 +4,7 @@
 #include "paint/font_picker_paint_charset.cppinc"
 #include "paint/font_picker_paint_spoof.cppinc"
 #include "paint/font_picker_paint_text_substitution.cppinc"
+#include "paint/font_picker_paint_compat.cppinc"
 #include "paint/font_picker_paint_metrics.cppinc"
 #include "paint/font_picker_paint_font_list.cppinc"
 #include "paint/font_picker_paint_scrollbar.cppinc"
@@ -54,6 +55,7 @@ static void PaintWindow(HWND hWnd) {
         PaintSearchArea(mem, rc);
         PaintCharsetBar(mem, rc);
         PaintCompatBackdrop(mem, rc);
+        PaintCompatHeader(mem, rc);
         PaintSpoofBar(mem, rc);
         PaintTextSubstitutionBar(mem, rc);
         PaintMetricsBar(mem, rc);

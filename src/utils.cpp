@@ -828,6 +828,41 @@ namespace Utils {
         AppendIniText(output, key, buffer);
     }
 
+    // 读取现有 ini 的原始文本（保留注释/空行/未知键）；文件不存在或读失败返回空串。
+    static std::string ReadIniTextFile(const std::wstring& iniPath) {
+        HANDLE hFile = CreateFileW(iniPath.c_str(), GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) return std::string();
+
+        DWORD size = GetFileSize(hFile, NULL);
+        if (size == 0 || size == INVALID_FILE_SIZE) {
+            CloseHandle(hFile);
+            return std::string();
+        }
+        std::string text(size, '\0');
+        DWORD read = 0;
+        BOOL ok = ReadFile(hFile, &text[0], size, &read, NULL);
+        CloseHandle(hFile);
+        if (!ok) return std::string();
+        text.resize(read);
+        // 去掉 UTF-8 BOM（与 LoadConfig 一致）
+        if (text.size() >= 3 && (unsigned char)text[0] == 0xEF &&
+            (unsigned char)text[1] == 0xBB && (unsigned char)text[2] == 0xBF) {
+            text.erase(0, 3);
+        }
+        return text;
+    }
+
+    // 取 "Key=Value" 的 Key；注释/空行/节头行返回空串（规则与 ParseIni 一致）。
+    static std::string IniLineKey(const std::string& line) {
+        if (line.empty() || line[0] == ';' || line[0] == '#' || line[0] == '[')
+            return std::string();
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) return std::string();
+        return line.substr(0, eq);
+    }
+
     bool SaveConfig(HMODULE hModule) {
         std::wstring iniPath = GetIniPath(hModule);
 
@@ -924,6 +959,63 @@ namespace Utils {
 
         AppendIniText(out, "PreviewTextW", WideToUtf8(Config::PreviewTextW));
 
+        // 把受管键解析成 (key, 完整行) 列表（out 首行为 "[FontHook]" 节头，会被 IniLineKey 跳过）。
+        std::vector<std::pair<std::string, std::string>> managedLines;
+        {
+            size_t pos = 0;
+            while (pos < out.size()) {
+                size_t eol = out.find('\n', pos);
+                if (eol == std::string::npos) eol = out.size();
+                std::string seg = out.substr(pos, eol - pos);
+                pos = (eol < out.size()) ? eol + 1 : out.size();
+                if (!seg.empty() && seg.back() == '\r') seg.pop_back();
+                std::string key = IniLineKey(seg);
+                if (key.empty()) continue;
+                std::string fullLine = seg + "\r\n";
+                managedLines.push_back({ std::move(key), std::move(fullLine) });
+            }
+        }
+
+        // 与旧文件合并：玩家手写的注释/空行/未知键原样保留；受管键就地更新；旧文件缺少的受管键补到末尾。
+        std::string merged;
+        std::string existing = ReadIniTextFile(iniPath);
+        if (existing.empty()) {
+            merged = out;  // 首次写入：与既有行为逐字节一致
+        } else {
+            merged.reserve(existing.size() + out.size() + 16);
+            std::vector<bool> emitted(managedLines.size(), false);
+            size_t pos = 0;
+            while (pos < existing.size()) {
+                size_t eol = existing.find('\n', pos);
+                bool isLast = (eol == std::string::npos);
+                std::string seg = existing.substr(pos, isLast ? std::string::npos : eol - pos);
+                pos = isLast ? existing.size() : eol + 1;
+                if (!seg.empty() && seg.back() == '\r') seg.pop_back();
+
+                std::string key = IniLineKey(seg);
+                int hit = -1;
+                bool isManaged = false;
+                for (size_t i = 0; i < managedLines.size(); ++i) {
+                    if (managedLines[i].first != key) continue;
+                    isManaged = true;
+                    if (!emitted[i]) hit = (int)i;
+                    break;
+                }
+                if (hit >= 0) {
+                    merged.append(managedLines[hit].second);
+                    emitted[hit] = true;
+                } else if (isManaged) {
+                    // 重复出现的受管键：丢弃旧行，保证下面写回的新值生效
+                } else {
+                    merged.append(seg);
+                    merged.append("\r\n");
+                }
+            }
+            for (size_t i = 0; i < managedLines.size(); ++i) {
+                if (!emitted[i]) merged.append(managedLines[i].second);
+            }
+        }
+
         // Write with UTF-8 BOM
         HANDLE hFile = CreateFileW(iniPath.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile == INVALID_HANDLE_VALUE) {
@@ -934,7 +1026,7 @@ namespace Utils {
         // UTF-8 BOM
         const BYTE bom[3] = { 0xEF, 0xBB, 0xBF };
         WriteFile(hFile, bom, 3, &written, NULL);
-        WriteFile(hFile, out.c_str(), (DWORD)out.size(), &written, NULL);
+        WriteFile(hFile, merged.c_str(), (DWORD)merged.size(), &written, NULL);
         CloseHandle(hFile);
 
         LogW(L"[Config] Saved config to %s (Font: %s)", iniPath.c_str(), Config::ForcedFontNameW);

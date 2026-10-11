@@ -12,3 +12,10 @@
 #define IDC_STATIC_LOGLABEL   1009
 #define IDC_EDIT_LOG          1010
 #define IDC_STATIC_HINT       1011
+#define IDC_STATIC_LISTLABEL  1012
+#define IDC_LIST_GAMES        1013
+#define IDC_STATIC_LISTEMPTY  1014
+#define IDC_BTN_OPEN_DIR      1015
+#define IDC_BTN_REMOVE        1016
+#define IDC_BTN_REFRESH       1017
+#define IDC_BTN_ADD_GAME      1018

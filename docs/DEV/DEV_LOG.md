@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-10-11　安装器：扩展为多游戏字体管理器（任务 B2）
+
+- **任务**：用户有「多个游戏都要改字体」的需求，把安装器从单游戏工具升级为多游戏集中管理。
+- **改动文件**：
+  - `installer/main.cpp`：新增中央清单 `%APPDATA%\CTFontHook\games.ini`（UTF-16LE+BOM）读写与按目录去重的
+    `UpsertGame` / `RemoveGameRecord`；`ReadGameFont` 读取各游戏 `FontHook.ini` 的 `FontNameW`；
+    `DoUninstall` 重构为 `DoUninstallForDir`；新增 `SysListView32` 列表（游戏/目录/架构/当前字体/状态）与
+    按钮「卸载/还原」「打开目录」「移除记录」「刷新」「手动登记游戏…」；界面客户端 760×626。
+  - `installer/resource.h`：新增列表与按钮 ID（1012–1018）。
+  - `installer/CTFontHookInstaller.vcxproj`：`<Link><AdditionalManifestDependencies>` 引入 Common-Controls v6。
+- **做法**：主/清单分栏；列表面板与操作日志随窗口自适应（`WM_SIZE`）。
+- **验证**（实测）：
+  - `scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过。
+  - `mt.exe` 提取 EXE 嵌入清单：同时含 `requestedExecutionLevel=requireAdministrator` 与
+    `Microsoft.Windows.Common-Controls 6.0.0.0`。
+  - `VersionInfo`（B1+B3 已验）保持正确。
+- **坑（务必保留）**：`AdditionalManifestDependencies` 必须放在 `<Link>` **节点下**（映射 `/MANIFESTDEPENDENCY:`），
+  放在 `<Manifest>` 工具节下不会生效（不会与 UAC 清单合并）。
+- **遗留**：未做真机多游戏闭环验证；`<shellapi.h>` 需显式包含（`ShellExecuteW`）。
+
+---
+
 ## 2026-10-11　安装器：修窗口显示（高 DPI 裁剪）+ 补版本信息（任务 B1+B3）
 
 - **任务**：修复安装器窗口「提示内容显示不完整」，并为 EXE 补上开发者版本信息。

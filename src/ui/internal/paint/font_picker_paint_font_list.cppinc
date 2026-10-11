@@ -37,6 +37,14 @@ static void PaintFontList(HDC mem, const RECT& rc)
         int textLeft = itemRc.left + 14;
         int badgeRight = itemRc.right - 8;
 
+        // 选中行右侧的「应用」按钮（该行已是当前字体时不显示，避免重复）。
+        bool showApplyBtn = selected && !isApplied;
+        RECT applyRc = {};
+        if (showApplyBtn) {
+            applyRc = GetListRowActionButtonRect(idx);
+            badgeRight = applyRc.left - 6;
+        }
+
         // Badges (from right to left)
         if (isApplied) {
             SelectObject(mem, uiBadge);
@@ -74,6 +82,20 @@ static void PaintFontList(HDC mem, const RECT& rc)
             LineTo(mem, itemRc.right - 14, itemRc.bottom + 1);
             SelectObject(mem, oldSep);
             DeleteObject(sepPen);
+        }
+
+        // 应用按钮（最后绘制，压在名称之上）
+        if (showApplyBtn) {
+            COLORREF fill = g_rowApplyHovered ? COL_ACCENT
+                : MixColor(COL_ACCENT, COL_SELECTED_BG, 0.35f);
+            FillRoundRect(mem, applyRc, 7, fill);
+            DrawRoundRectOutline(mem, applyRc, 7, COL_ACCENT);
+            HFONT btnFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
+            HGDIOBJ oldBtnFont = SelectObject(mem, btnFont);
+            SetTextColor(mem, RGB(255, 255, 255));
+            DrawTextW(mem, L"应用", -1, &applyRc,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            SelectObject(mem, oldBtnFont);
         }
     }
 

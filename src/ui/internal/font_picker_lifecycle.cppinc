@@ -154,15 +154,7 @@ static void RestoreUIStateFromConfig() {
 
     // Try to select the applied font in the list
     UpdateFilter();
-    if (!g_appliedFont.empty()) {
-        for (int i = 0; i < (int)g_filteredIndices.size(); i++) {
-            if (WideEqualsIgnoreCase(g_allFonts[g_filteredIndices[i]].name, g_appliedFont)) {
-                g_selectedIndex = i;
-                EnsureVisible();
-                break;
-            }
-        }
-    }
+    FocusAppliedFontInList();
 }
 
 static void ApplyRestoredConfigToGame() {

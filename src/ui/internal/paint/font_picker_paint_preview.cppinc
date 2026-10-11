@@ -94,21 +94,28 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
             g_selectedIndex + 1, itemCount); // 游戏: ... | 选择: ...
         DrawTextW(mem, infoBuf, -1, &infoRc, DT_LEFT | DT_SINGLELINE);
 
-        // 「应用此字体」按钮：替代原先仅键盘提示，单击此按钮才真正生效。
-        {
-            RECT btnRc = GetPreviewApplyButtonRect();
-            COLORREF btnFill = g_previewApplyHovered
-                ? COL_ACCENT : MixColor(COL_ACCENT, COL_PREVIEW_BOT, 0.25f);
-            FillRoundRect(mem, btnRc, 8, btnFill);
-            DrawRoundRectOutline(mem, btnRc, 8, COL_ACCENT);
-            HFONT btnFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
-            HGDIOBJ oldBtnFont = SelectObject(mem, btnFont);
-            SetTextColor(mem, RGB(255, 255, 255));
-            DrawTextW(mem, L"应用此字体", -1, &btnRc,
-                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-            SelectObject(mem, oldBtnFont);
-        }
         SelectObject(mem, oldInfoFont);
+    }
+
+    // 「当前字体」提示（预览区右下角）：单击可跳到当前已应用的字体。
+    {
+        RECT hintRc = GetCurrentFontHintRect();
+        COLORREF hintFill = g_currentFontHintHovered
+            ? MixColor(COL_ACCENT, COL_PREVIEW_BOT, 0.25f)
+            : MixColor(COL_PREVIEW_BOT, COL_PREVIEW_TOP, 0.35f);
+        FillRoundRect(mem, hintRc, 6, hintFill);
+        DrawRoundRectOutline(mem, hintRc, 6,
+            g_currentFontHintHovered ? COL_ACCENT : COL_BORDER);
+
+        HFONT hintFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
+        HGDIOBJ oldHintFont = SelectObject(mem, hintFont);
+        SetTextColor(mem, g_appliedFont.empty() ? COL_TEXT_HINT : COL_ACCENT);
+        std::wstring hintText = L"当前字体：";
+        hintText += g_appliedFont.empty() ? L"（未应用）" : g_appliedFont;
+        RECT hintTextRc = { hintRc.left + 8, hintRc.top, hintRc.right - 8, hintRc.bottom };
+        DrawTextW(mem, hintText.c_str(), -1, &hintTextRc,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+        SelectObject(mem, oldHintFont);
     }
 
 }

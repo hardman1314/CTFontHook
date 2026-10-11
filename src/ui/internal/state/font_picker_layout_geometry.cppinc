@@ -56,13 +56,25 @@ static RECT GetTextSubAreaRect() {
 static RECT GetListAreaRect() { return MakeUiRect(0, GetListTop(), WINDOW_WIDTH, GetListBottom()); }
 static RECT GetMetricsAreaRect() { return MakeUiRect(0, GetMetricsTop(), WINDOW_WIDTH, GetPreviewTop()); }
 static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
-// 预览区右下角「应用此字体」按钮：单击列表仍只选中，应用由该按钮触发。
-static RECT GetPreviewApplyButtonRect() {
+// 选中行右侧的「应用」按钮：单击列表仍只选中，应用由该按钮触发。
+static RECT GetListRowActionButtonRect(int filteredIdx) {
+    int visibleRow = filteredIdx - g_scrollOffset;
+    int itemTop = GetListTop() + visibleRow * ITEM_HEIGHT;
+    int itemRight = WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN * 2 - 4;
+    int btnW = SF(64);
     int btnH = SF(24);
-    int btnW = SF(108);
+    int right = itemRight - 8;
+    int top = itemTop + (ITEM_HEIGHT - btnH) / 2;
+    return MakeUiRect(right - btnW, top, right, top + btnH);
+}
+
+// 预览区右下角的「当前字体」提示：单击可跳到当前已应用的字体。
+static RECT GetCurrentFontHintRect() {
+    int h = SF(24);
+    int left = WINDOW_WIDTH / 2 + 60;
     int right = WINDOW_WIDTH - SF(14);
     int bottom = WINDOW_HEIGHT - SF(6);
-    return MakeUiRect(right - btnW, bottom - btnH, right, bottom);
+    return MakeUiRect(left, bottom - h, right, bottom);
 }
 static RECT GetScrollbarAreaRect() {
     return MakeUiRect(WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN - 4,

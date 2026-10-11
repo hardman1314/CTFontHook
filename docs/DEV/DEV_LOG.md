@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-10-11　体验重构：应用按钮移入选中行 + 当前字体提示（任务 A）
+
+- **任务**：把「应用」入口挪到选中行右侧，并把原预览区按钮位置改为「当前字体」提示（可点击跳回该字体）。
+- **改动文件**（7 个，全部在 `src/ui/internal/`，无越界）：
+  - `state/font_picker_layout_geometry.cppinc`：删 `GetPreviewApplyButtonRect()`；新增
+    `GetListRowActionButtonRect(filteredIdx)`、`GetCurrentFontHintRect()`。
+  - `state/font_picker_state.cppinc`：悬停状态改为 `g_rowApplyHovered` / `g_currentFontHintHovered`。
+  - `input/font_picker_selection.cppinc`：新增 `FocusAppliedFontInList()`。
+  - `font_picker_lifecycle.cppinc`：首次显示时改调 `UpdateFilter()` + `FocusAppliedFontInList()`。
+  - `paint/font_picker_paint_font_list.cppinc`：选中且非当前字体时在行右侧绘制「应用」按钮（最后绘制压于名称之上）。
+  - `paint/font_picker_paint_preview.cppinc`：删按钮块；预览区右下角绘制「当前字体：<字体名>」提示（未应用显示「（未应用）」）。
+  - `input/font_picker_wndproc.cppinc`：`HandlePreviewApplyClick` → `HandleRowApplyClick`；新增
+    `HandleCurrentFontHintClick`；接入单击分发链；`WM_MOUSEMOVE` / `WM_MOUSELEAVE` 拆分两个新悬停状态。
+- **不变式**：单击列表仍只「选中」，双击 / Enter 仍可应用；已应用字体所在行不画「应用」按钮（显示「✓ 已应用」徽标）。
+- **验证**（实测）：`scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过（32/64 位 Release 编译 + 导出校验 + 安装器构建）；
+  `git status` 确认仅 7 个计划内文件被改。
+- **遗留**：未做真机交互验证（按钮手感、点击提示跳转是否顺滑），待实机确认。
+
+---
+
 ## 2026-10-11　部署自动化（三）：一键脚本接入安装器 + 忽略产物
 
 - **任务**：把独立安装器接入两个一键脚本，并让构建产物不进版本库。

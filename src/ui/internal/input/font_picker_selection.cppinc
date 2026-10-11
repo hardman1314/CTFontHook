@@ -6,6 +6,19 @@ static void EnsureVisible() {
         g_scrollOffset = g_selectedIndex - VISIBLE_ITEMS + 1;
 }
 
+// 在当前过滤列表里定位「已应用」字体；命中则选中并滚动到可见，返回是否成功。
+static bool FocusAppliedFontInList() {
+    if (g_appliedFont.empty()) return false;
+    for (int i = 0; i < (int)g_filteredIndices.size(); ++i) {
+        if (IsAppliedFont(i)) {
+            g_selectedIndex = i;
+            EnsureVisible();
+            return true;
+        }
+    }
+    return false;
+}
+
 static void ClampScroll() {
     int mx = (int)g_filteredIndices.size() - VISIBLE_ITEMS;
     if (mx < 0) mx = 0;

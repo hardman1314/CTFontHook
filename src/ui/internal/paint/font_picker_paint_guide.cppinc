@@ -103,7 +103,8 @@ static const PickerGuideBlock g_featureGuideBlocks[] = {
     { PICKER_GUIDE_BLOCK_ITEM, L"字距 / 行距",
       L"数值 0 表示没有额外调整。字距处理字符横向拥挤，行距处理多行文字上下拥挤。" },
     { PICKER_GUIDE_BLOCK_ITEM, L"上行 / 下行",
-      L"控制字体相对基线的垂直度量。文字整体偏上、偏下或被上下裁切时使用，优先采用参照计算。" },
+      L"控制字体相对基线的垂直度量。上行取正值、下行取负值（直接填正数也会按负值处理）。"
+      L"文字整体偏上、偏下或被上下裁切时使用，优先采用参照计算。" },
     { PICKER_GUIDE_BLOCK_ITEM, L"粗细",
       L"400 为常规字重，数值每次变化 100。文字笔画过细或过粗时调整。" },
     { PICKER_GUIDE_BLOCK_ITEM, L"设为参照 / 按参照计算",

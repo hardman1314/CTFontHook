@@ -66,12 +66,12 @@ static void PaintMetricsBar(HDC mem, const RECT& rc)
 
         wchar_t valueBuf[96];
         int widthPct = GetFontWidthPercent();
-        swprintf_s(valueBuf, L"%.2f", widthPct / 100.0);
+        swprintf_s(valueBuf, L"%.2f×", widthPct / 100.0);
         drawStepper(mr.width, L"\x5b57\x5bbd", valueBuf, Config::EnableFontWidthScale,
             widthPct > FONT_SCALE_MIN_PERCENT, widthPct < FONT_SCALE_MAX_PERCENT);
 
         int heightPct = GetFontHeightPercent();
-        swprintf_s(valueBuf, L"%.2f", heightPct / 100.0);
+        swprintf_s(valueBuf, L"%.2f×", heightPct / 100.0);
         drawStepper(mr.height, L"\x5b57\x9ad8", valueBuf, Config::EnableFontHeightScale,
             heightPct > FONT_SCALE_MIN_PERCENT, heightPct < FONT_SCALE_MAX_PERCENT);
 

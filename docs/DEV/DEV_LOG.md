@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-10-11　界面优化「整体放大 + 兼容设置下拉菜单」（真机反馈）
+
+- **任务**：主人真机反馈两点——① 窗口太小、内容看不清；②「兼容设置」里开关右侧的 ▾ 药丸
+  应是**点击弹出的下拉菜单**（原为点一下循环切换），且菜单**不影响其他内容组件**。
+- **做法（按批准方案，1.25×）**：
+  - **整体放大**：默认 `g_uiScale` 1.0 → **1.25**；默认窗口 410×724 → **512×905**；
+    最小窗口 380×660 → **475×825**；建窗时把初始尺寸夹到不超过屏幕可视区（小屏保护）。
+  - **下拉菜单**：新增 `PickerPopupKind` 状态 + 弹出面板绘制分片；药丸矩形抽成
+    「单一来源」helper（`GetSpoofCharsetPillRect` / `GetTextSubModePillRect` / `GetCodepagePresetPillRect`），
+    绘制、命中、菜单锚点**共用**；菜单在 `PaintWindow` **最后叠加绘制**（只覆盖、不改动其他组件）；
+    点击条目=选择、点其他=关闭并吞掉该次点击（Windows 菜单惯例）；Esc / 鼠标离开 / 切页 / 隐藏 均关闭。
+- **改动文件**（10 改 + 1 新建，全部在计划内）：
+  - `state/font_picker_state.cppinc`：默认缩放 / 窗口 / 最小尺寸；新增弹出菜单状态。
+  - `font_picker_lifecycle.cppinc`：建窗尺寸夹取屏幕。
+  - `state/font_picker_layout_geometry.cppinc`：药丸矩形 helper + 重构 `SpoofBarHitTest` /
+    `TextSubstitutionHitTest` 复用；新增菜单面板/条目/命中 helper。
+  - `paint/font_picker_paint_popup.cppinc`（**新建**）：`PaintPopupMenu`（面板 + 逐项 + 选中/悬停态）。
+  - `paint/font_picker_paint_spoof.cppinc`、`paint/font_picker_paint_text_substitution.cppinc`：药丸改用 helper 矩形。
+  - `font_picker_paint.cppinc`：挂接弹出分片并在 `PaintWindow` 末尾叠加绘制。
+  - `input/font_picker_wndproc.cppinc`：弹出菜单交互（打开/关闭/选择/悬停/Esc）。
+  - `input/font_picker_guide_input.cppinc`、`state/font_picker_window_animation.cppinc`：切页/隐藏时收起菜单。
+  - `src/CTFontHook.vcxproj`：登记新分片。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验），
+  `x64\Release\winmm.dll` 518656 字节、`Release\winmm.dll` 488960 字节。
+- **遗留**：**观感需主人真机验证**（原生 GDI 窗口，本机无法可视化验证）——放大倍率可用 **Ctrl+滚轮**微调；
+  菜单面板叠加会**视觉覆盖**下方组件（下拉菜单固有），但不改动任何组件。
+  详见 [`features/界面重构-设计稿复刻.md`](features/界面重构-设计稿复刻.md)。
+
 ## 2026-10-11　界面重构 批次3「海报背景图接入」（设计稿复刻）
 
 - **任务**：把设计稿里的角色海报（`设计图/Text.png`，343×412 RGBA，自身最大不透明度仅 ~27%）

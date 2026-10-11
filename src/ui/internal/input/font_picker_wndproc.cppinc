@@ -159,6 +159,55 @@ static bool HandlePreviewFontButtonClick(HWND hWnd, int x, int y) {
     return true;
 }
 
+// —— 兼容设置下拉菜单 ——
+static void ClosePickerPopup(HWND hWnd) {
+    if (g_popupKind == POPUP_NONE) return;
+    g_popupKind = POPUP_NONE;
+    g_popupHoveredItem = -1;
+    if (hWnd) InvalidateRect(hWnd, NULL, FALSE);
+}
+
+static void OpenPickerPopup(HWND hWnd, PickerPopupKind kind) {
+    g_popupKind = kind;
+    g_popupHoveredItem = -1;
+    if (hWnd) InvalidateRect(hWnd, NULL, FALSE);
+}
+
+static void SelectPopupItem(PickerPopupKind kind, int index) {
+    switch (kind) {
+    case POPUP_SPOOF_CHARSET:
+        if (index >= 0 && index < g_spoofCharsetCount) {
+            g_spoofCharsetIdx = index;
+            ApplySpoofConfig();
+        }
+        break;
+    case POPUP_TEXTSUB_MODE:
+        if (index >= 0 && index < g_textSubstitutionModeCount) {
+            g_textSubstitutionModeIdx = index;
+            ApplyTextSubstitutionConfig();
+        }
+        break;
+    case POPUP_CODEPAGE_PRESET:
+        if (index >= 0 && index < g_codepageRedirectPresetCount) {
+            g_codepageRedirectPresetIdx = index;
+            ApplyCodepageRedirectConfig();
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+// 菜单打开时接管点击：点条目=选择；点其他=关闭（并吞掉本次点击，避免误触下层组件）。
+static bool HandlePopupClick(HWND hWnd, int x, int y) {
+    if (g_popupKind == POPUP_NONE) return false;
+    int hit = PopupHitTest(x, y);
+    if (hit >= 0)
+        SelectPopupItem(g_popupKind, hit);
+    ClosePickerPopup(hWnd);
+    return true;
+}
+
 static bool HandleSpoofBarClick(HWND hWnd, int x, int y) {
     RECT area = GetSpoofAreaRect();
     if (!PointInRect(x, y, area))
@@ -168,13 +217,10 @@ static bool HandleSpoofBarClick(HWND hWnd, int x, int y) {
     if (hit == 0) {
         g_spoofEnabled = !g_spoofEnabled;
         ApplySpoofConfig();
-    } else if (hit == 1) {
-        g_spoofCharsetIdx++;
-        if (g_spoofCharsetIdx >= g_spoofCharsetCount) g_spoofCharsetIdx = 0;
-        ApplySpoofConfig();
-    }
-    if (hit >= 0)
         InvalidateRect(hWnd, NULL, FALSE);
+    } else if (hit == 1) {
+        OpenPickerPopup(hWnd, POPUP_SPOOF_CHARSET);
+    }
     return true;
 }
 
@@ -187,22 +233,16 @@ static bool HandleTextSubstitutionClick(HWND hWnd, int x, int y) {
     if (hit == 0) {
         g_textSubstitutionEnabled = !g_textSubstitutionEnabled;
         ApplyTextSubstitutionConfig();
+        InvalidateUiRect(hWnd, area, 1);
     } else if (hit == 1) {
-        g_textSubstitutionModeIdx++;
-        if (g_textSubstitutionModeIdx >= g_textSubstitutionModeCount)
-            g_textSubstitutionModeIdx = 0;
-        ApplyTextSubstitutionConfig();
+        OpenPickerPopup(hWnd, POPUP_TEXTSUB_MODE);
     } else if (hit == 2) {
         g_codepageRedirectEnabled = !g_codepageRedirectEnabled;
         ApplyCodepageRedirectConfig();
-    } else if (hit == 3) {
-        g_codepageRedirectPresetIdx++;
-        if (g_codepageRedirectPresetIdx >= g_codepageRedirectPresetCount)
-            g_codepageRedirectPresetIdx = 0;
-        ApplyCodepageRedirectConfig();
-    }
-    if (hit >= 0)
         InvalidateUiRect(hWnd, area, 1);
+    } else if (hit == 3) {
+        OpenPickerPopup(hWnd, POPUP_CODEPAGE_PRESET);
+    }
     return true;
 }
 
@@ -317,6 +357,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
 
     case WM_KEYDOWN:
+        // 下拉菜单打开时：Esc 关闭菜单。
+        if (g_popupKind != POPUP_NONE && wParam == VK_ESCAPE) {
+            ClosePickerPopup(hWnd);
+            return 0;
+        }
         if (wParam == VK_TAB) {
             SetPickerPage(hWnd, g_pickerPage == PICKER_PAGE_GUIDE
                 ? PICKER_PAGE_FONTS : PICKER_PAGE_GUIDE);
@@ -439,6 +484,22 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hWnd, 0 };
             if (TrackMouseEvent(&tme))
                 g_trackingMouseLeave = true;
+        }
+
+        // 下拉菜单打开时只跟踪菜单条目悬停，不干扰其他组件。
+        if (g_popupKind != POPUP_NONE) {
+            int hit = PopupHitTest(x, y);
+            if (hit != g_popupHoveredItem) {
+                g_popupHoveredItem = hit;
+                RECT panel; int itemH = 0;
+                if (GetPopupPanelRect(g_popupKind, &panel, &itemH)) {
+                    InflateRect(&panel, SF(2), SF(2));
+                    InvalidateUiRect(hWnd, panel, 0);
+                } else {
+                    InvalidateRect(hWnd, NULL, FALSE);
+                }
+            }
+            return 0;
         }
 
         // 标题栏：页签药丸 + 最小化/关闭按钮
@@ -609,6 +670,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_MOUSELEAVE:
         g_trackingMouseLeave = false;
+        if (g_popupKind != POPUP_NONE) {
+            g_popupKind = POPUP_NONE;
+            g_popupHoveredItem = -1;
+            InvalidateRect(hWnd, NULL, FALSE);
+        }
         if (g_hoveredIndex != -1 || g_closeHovered || g_minHovered || g_scrollbarHovered || g_hoveredCharset != -1
             || g_headerPillHovered
             || g_guideHoveredSection >= 0 || g_guideScrollbarHovered
@@ -666,6 +732,10 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         if (g_hPreviewTextEdit)
             FinishPreviewTextEdit(true);
+
+        // 下拉菜单打开时优先接管点击（点条目选择 / 点其他关闭并吞掉）。
+        if (HandlePopupClick(hWnd, x, y))
+            return 0;
 
         if (HandleTitleButtonClick(hWnd, x, y))
             return 0;

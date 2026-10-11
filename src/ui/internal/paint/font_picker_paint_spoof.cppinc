@@ -26,18 +26,17 @@ static void PaintSpoofBar(HDC mem, const RECT& rc)
 
     SelectObject(mem, spFont);
     {
-        // 目标字符集（下拉样式药丸，含 ▾，点击循环切换）
+        // 目标字符集（下拉样式药丸，含 ▾，点击弹出菜单）
         std::wstring pillText = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
         pillText += L"  \x25BE";
-        SIZE sz; GetTextExtentPoint32W(mem, pillText.c_str(), (int)pillText.size(), &sz);
-        int bw = sz.cx + 18;
-        RECT pillRc = { px, py, px + bw, py + COMPAT_ROW_H };
-        COLORREF bgCol = g_spoofCharsetHovered ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
+        RECT pillRc = GetSpoofCharsetPillRect();
+        bool open = (g_popupKind == POPUP_SPOOF_CHARSET);
+        COLORREF bgCol = (g_spoofCharsetHovered || open) ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
         FillRoundRect(mem, pillRc, 6, bgCol);
         DrawRoundRectOutline(mem, pillRc, 6, COL_ACCENT2);
         SetTextColor(mem, COL_TEXT_PILL);
         DrawTextW(mem, pillText.c_str(), -1, &pillRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        px += bw + 8;
+        px = pillRc.right + 8;
     }
 
     {

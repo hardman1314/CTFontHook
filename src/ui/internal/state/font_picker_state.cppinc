@@ -140,6 +140,17 @@ static int g_codepageRedirectPresetIdx = 0;
 static bool g_codepageRedirectHovered = false;
 static bool g_codepageRedirectPresetHovered = false;
 
+// 兼容设置区「选择型」按钮（开关右侧的 ▾ 药丸）：点击弹出下拉菜单。
+// 菜单为叠加绘制，只覆盖显示、不移动/不改变其他组件。
+enum PickerPopupKind {
+    POPUP_NONE = 0,
+    POPUP_SPOOF_CHARSET,      // 伪装：目标字符集
+    POPUP_TEXTSUB_MODE,       // 映射：模式
+    POPUP_CODEPAGE_PRESET,    // 转码：预设
+};
+static PickerPopupKind g_popupKind = POPUP_NONE;
+static int g_popupHoveredItem = -1;
+
 static const wchar_t* GetCharsetDisplayName(BYTE charset) {
     switch (charset) {
     case SHIFTJIS_CHARSET: return L"\x65E5\x6587";
@@ -158,8 +169,9 @@ static void EnumerateFonts();
 //  Layout constants（严格对齐 Figma 设计稿：默认 410×724，圆角 11）
 // -----------------------------------------------------------------------------
 static int       ITEM_HEIGHT      = 57;   // 列表行高（含行间 5px 间距）
-static int       WINDOW_WIDTH     = 410;
-static int       WINDOW_HEIGHT    = 724;
+// 默认窗口按设计稿 410×724 放大 1.25 倍，配合 g_uiScale=1.25 让内容整体变大（可读性）。
+static int       WINDOW_WIDTH     = 512;
+static int       WINDOW_HEIGHT    = 905;
 static const int TITLE_HEIGHT     = 32;   // 标题栏
 static const int SEARCH_HEIGHT    = 27;   // 搜索框
 static const int CHARSET_HEIGHT   = 38;   // 字符集药丸区（含上下各 7px 间距）
@@ -209,8 +221,8 @@ enum MetricValueKind {
 };
 
 // Resize support
-static const int MIN_WIDTH        = 380;
-static const int MIN_HEIGHT       = 660;
+static const int MIN_WIDTH        = 475;
+static const int MIN_HEIGHT       = 825;
 static const int RESIZE_BORDER    = 6;   // pixels from edge for resize hit-test
 static const wchar_t* WND_CLASS = L"FontPickerOverlay";
 
@@ -294,8 +306,8 @@ static HWND g_hPreviewTextEdit = NULL;
 static WNDPROC g_OldPreviewTextEditProc = NULL;
 static bool g_previewTextEditClosing = false;
 
-// UI font scale
-static float g_uiScale = 1.0f;
+// UI font scale（默认 1.25 = 相对设计稿 410×724 放大一档，让 8–11px 字号达到可读尺寸）
+static float g_uiScale = 1.25f;
 static const float UI_SCALE_MIN = 0.7f;
 static const float UI_SCALE_MAX = 1.8f;
 static const float UI_SCALE_STEP = 0.1f;

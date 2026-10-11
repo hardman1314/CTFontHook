@@ -342,6 +342,7 @@
     <None Include="ui\internal\paint\font_picker_paint_text_substitution.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_compat.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_list_bg.cppinc" />
+    <None Include="ui\internal\paint\font_picker_paint_popup.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_metrics.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_font_list.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_scrollbar.cppinc" />

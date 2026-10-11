@@ -41,6 +41,9 @@ static void SetPickerPage(HWND hWnd, PickerPage page) {
     }
     EndGuideScrollbarDrag();
 
+    g_popupKind = POPUP_NONE;
+    g_popupHoveredItem = -1;
+
     g_pickerPage = page;
     ClearFontPageHoverState();
     ClearGuidePageHoverState();

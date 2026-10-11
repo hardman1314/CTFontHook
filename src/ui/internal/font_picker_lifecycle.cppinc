@@ -13,6 +13,12 @@ static void CreatePickerWindow() {
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
 
+    // 小屏保护：初始窗口不超过屏幕可视区，避免一开窗就超出边界。
+    if (WINDOW_WIDTH > screenW - 40)
+        WINDOW_WIDTH = max(MIN_WIDTH, screenW - 40);
+    if (WINDOW_HEIGHT > screenH - 80)
+        WINDOW_HEIGHT = max(MIN_HEIGHT, screenH - 80);
+
     // Keep standard top-level window semantics for DWM transitions. The
     // window procedure and DWM policy suppress all native frame rendering.
     DWORD pickerStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |

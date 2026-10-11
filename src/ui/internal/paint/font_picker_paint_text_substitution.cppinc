@@ -21,34 +21,32 @@ static void PaintTextSubstitutionBar(HDC mem, const RECT& rc)
         px += bw + 8;
     };
 
-    auto drawChoice = [&](int& px, const wchar_t* label, bool active, bool hovered, COLORREF accent) {
+    auto drawChoice = [&](RECT pillRc, const wchar_t* label, bool active, bool hovered, bool open, COLORREF accent) {
         SelectObject(mem, font);
         std::wstring text = label;
         text += L"  \x25BE";
-        SIZE sz; GetTextExtentPoint32W(mem, text.c_str(), (int)text.size(), &sz);
-        int bw = sz.cx + 16;
-        RECT pillRc = { px, py, px + bw, py + COMPAT_ROW_H };
-        COLORREF bgCol = hovered ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
+        COLORREF bgCol = (hovered || open) ? COL_HOVER_BG : MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.04f);
         FillRoundRect(mem, pillRc, 6, bgCol);
         DrawRoundRectOutline(mem, pillRc, 6, active ? accent : COL_BORDER);
         SetTextColor(mem, active ? accent : COL_TEXT_PILL);
         DrawTextW(mem, text.c_str(), -1, &pillRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        px += bw + 8;
     };
 
     // 组 1：映射（开关 + 模式）
     int px = COMPAT_MARGIN_L;
     drawToggle(px, g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173",
         g_textSubstitutionEnabled, g_textSubstitutionHovered, COL_ACCENT2);
-    drawChoice(px, g_textSubstitutionModes[g_textSubstitutionModeIdx].label,
-        g_textSubstitutionEnabled, g_textSubstitutionModeHovered, COL_ACCENT2);
+    drawChoice(GetTextSubModePillRect(), g_textSubstitutionModes[g_textSubstitutionModeIdx].label,
+        g_textSubstitutionEnabled, g_textSubstitutionModeHovered,
+        g_popupKind == POPUP_TEXTSUB_MODE, COL_ACCENT2);
 
     // 组 2：转码（开关 + 预设）
     px = GetCompatRow2SecondX();
     drawToggle(px, g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173",
         g_codepageRedirectEnabled, g_codepageRedirectHovered, COL_ACCENT3);
-    drawChoice(px, g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label,
-        g_codepageRedirectEnabled, g_codepageRedirectPresetHovered, COL_ACCENT3);
+    drawChoice(GetCodepagePresetPillRect(), g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label,
+        g_codepageRedirectEnabled, g_codepageRedirectPresetHovered,
+        g_popupKind == POPUP_CODEPAGE_PRESET, COL_ACCENT3);
 
     SelectObject(mem, oldFont);
 }

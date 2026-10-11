@@ -107,6 +107,9 @@ static void MinimizePickerWindowNative(HWND hWnd);
 
 static void HidePickerWindowAnimated(HWND hWnd) {
     if (!hWnd || !IsWindow(hWnd)) return;
+    // 隐藏前收起下拉菜单，避免状态残留到下次显示。
+    g_popupKind = POPUP_NONE;
+    g_popupHoveredItem = -1;
     // 无可用热键时，隐藏将无法再呼出：改为最小化，任务栏可重新打开。
     if (!g_toggleHotkeyRegistered) {
         MinimizePickerWindowNative(hWnd);

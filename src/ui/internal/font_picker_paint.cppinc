@@ -13,6 +13,7 @@
 #include "paint/font_picker_paint_status.cppinc"
 #include "paint/font_picker_paint_guide.cppinc"
 #include "paint/font_picker_paint_border.cppinc"
+#include "paint/font_picker_paint_popup.cppinc"
 
 static void PaintWindow(HWND hWnd) {
     PAINTSTRUCT ps;
@@ -67,6 +68,8 @@ static void PaintWindow(HWND hWnd) {
         PaintBottomBar(mem, rc);
     }
     PaintWindowBorder(mem, rc);
+    if (g_pickerPage == PICKER_PAGE_FONTS)
+        PaintPopupMenu(mem, rc);
 
     RestoreDC(mem, savedDc);
     DeleteObject(dirtyRgn);

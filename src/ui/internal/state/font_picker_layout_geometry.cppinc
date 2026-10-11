@@ -409,6 +409,83 @@ static int CharsetHitTest(int x, int y, int* outTotalWidth = nullptr) {
     return result;
 }
 
+// 「兼容设置」行内选择型药丸（含 ▾）矩形：绘制、命中与弹出菜单共用同一来源，避免错位。
+// 药丸左边界 = 同行开关按钮右边界 + 8。
+static RECT GetSpoofCharsetPillRect() {
+    int rowTop = GetCompatSpoofRowTop();
+    HDC hdc = GetDC(NULL);
+    HFONT bold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT normal = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+
+    int px = COMPAT_MARGIN_L;
+    {
+        HGDIOBJ old = SelectObject(hdc, bold);
+        const wchar_t* toggle = g_spoofEnabled ? L"\x4F2A\x88C5: \x5F00" : L"\x4F2A\x88C5: \x5173";
+        SIZE sz; GetTextExtentPoint32W(hdc, toggle, (int)wcslen(toggle), &sz);
+        px += sz.cx + 16 + 8;
+        SelectObject(hdc, old);
+    }
+
+    std::wstring text = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
+    text += L"  \x25BE";
+    HGDIOBJ old = SelectObject(hdc, normal);
+    SIZE sz; GetTextExtentPoint32W(hdc, text.c_str(), (int)text.size(), &sz);
+    SelectObject(hdc, old);
+    ReleaseDC(NULL, hdc);
+    RECT r = { px, rowTop, px + sz.cx + 18, rowTop + COMPAT_ROW_H };
+    return r;
+}
+
+static RECT GetTextSubModePillRect() {
+    int rowTop = GetCompatTextSubRowTop();
+    HDC hdc = GetDC(NULL);
+    HFONT bold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT normal = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+
+    int px = COMPAT_MARGIN_L;
+    {
+        HGDIOBJ old = SelectObject(hdc, bold);
+        const wchar_t* toggle = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
+        SIZE sz; GetTextExtentPoint32W(hdc, toggle, (int)wcslen(toggle), &sz);
+        px += sz.cx + 16 + 8;
+        SelectObject(hdc, old);
+    }
+
+    std::wstring text = g_textSubstitutionModes[g_textSubstitutionModeIdx].label;
+    text += L"  \x25BE";
+    HGDIOBJ old = SelectObject(hdc, normal);
+    SIZE sz; GetTextExtentPoint32W(hdc, text.c_str(), (int)text.size(), &sz);
+    SelectObject(hdc, old);
+    ReleaseDC(NULL, hdc);
+    RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
+    return r;
+}
+
+static RECT GetCodepagePresetPillRect() {
+    int rowTop = GetCompatTextSubRowTop();
+    HDC hdc = GetDC(NULL);
+    HFONT bold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT normal = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+
+    int px = GetCompatRow2SecondX();
+    {
+        HGDIOBJ old = SelectObject(hdc, bold);
+        const wchar_t* toggle = g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173";
+        SIZE sz; GetTextExtentPoint32W(hdc, toggle, (int)wcslen(toggle), &sz);
+        px += sz.cx + 16 + 8;
+        SelectObject(hdc, old);
+    }
+
+    std::wstring text = g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label;
+    text += L"  \x25BE";
+    HGDIOBJ old = SelectObject(hdc, normal);
+    SIZE sz; GetTextExtentPoint32W(hdc, text.c_str(), (int)text.size(), &sz);
+    SelectObject(hdc, old);
+    ReleaseDC(NULL, hdc);
+    RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
+    return r;
+}
+
 // Spoof row hit test: returns 0=toggle, 1=target charset, -1=none.
 static int SpoofBarHitTest(int x, int y) {
     int rowTop = GetCompatSpoofRowTop();
@@ -416,35 +493,18 @@ static int SpoofBarHitTest(int x, int y) {
 
     HDC hdc = GetDC(NULL);
     HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
-
-    int px = COMPAT_MARGIN_L;
     int result = -1;
-
-    // Toggle
     {
         HGDIOBJ old = SelectObject(hdc, spFontBold);
         const wchar_t* label = g_spoofEnabled ? L"伪装: 开" : L"伪装: 关";  // 伪装: 开/关
         SIZE sz; GetTextExtentPoint32W(hdc, label, (int)wcslen(label), &sz);
-        int bw = sz.cx + 16;
-        RECT r = { px, rowTop, px + bw, rowTop + COMPAT_ROW_H };
+        RECT r = { COMPAT_MARGIN_L, rowTop, COMPAT_MARGIN_L + sz.cx + 16, rowTop + COMPAT_ROW_H };
         if (x >= r.left && x < r.right) result = 0;
-        px += bw + 8;
         SelectObject(hdc, old);
     }
-
-    // Target charset（含下拉箭头预留）
-    {
-        HGDIOBJ old = SelectObject(hdc, spFont);
-        const wchar_t* charsetLabel = g_spoofCharsets[g_spoofCharsetIdx].shortLabel;
-        SIZE sz; GetTextExtentPoint32W(hdc, charsetLabel, (int)wcslen(charsetLabel), &sz);
-        int bw = sz.cx + 18 + SF(12);
-        RECT r = { px, rowTop, px + bw, rowTop + COMPAT_ROW_H };
-        if (result < 0 && x >= r.left && x < r.right) result = 1;
-        SelectObject(hdc, old);
-    }
-
     ReleaseDC(NULL, hdc);
+
+    if (result < 0 && PointInRect(x, y, GetSpoofCharsetPillRect())) result = 1;
     return result;
 }
 
@@ -454,52 +514,137 @@ static int TextSubstitutionHitTest(int x, int y) {
 
     HDC hdc = GetDC(NULL);
     HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
     int result = -1;
     SIZE sz;
 
-    // 组 1：映射（开关 + 模式）
-    int px = COMPAT_MARGIN_L;
+    // 组 1：映射开关
     {
         HGDIOBJ old = SelectObject(hdc, fontBold);
         const wchar_t* toggleLabel = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
         GetTextExtentPoint32W(hdc, toggleLabel, (int)wcslen(toggleLabel), &sz);
-        RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
+        RECT r = { COMPAT_MARGIN_L, rowTop, COMPAT_MARGIN_L + sz.cx + 16, rowTop + COMPAT_ROW_H };
         if (x >= r.left && x < r.right) result = 0;
-        px = r.right + 8;
         SelectObject(hdc, old);
     }
-    {
-        HGDIOBJ old = SelectObject(hdc, font);
-        const wchar_t* modeLabel = g_textSubstitutionModes[g_textSubstitutionModeIdx].label;
-        GetTextExtentPoint32W(hdc, modeLabel, (int)wcslen(modeLabel), &sz);
-        RECT r = { px, rowTop, px + sz.cx + 16 + SF(12), rowTop + COMPAT_ROW_H };
-        if (result < 0 && x >= r.left && x < r.right) result = 1;
-        SelectObject(hdc, old);
-    }
-
-    // 组 2：转码（开关 + 预设）
-    px = GetCompatRow2SecondX();
+    // 组 2：转码开关
     {
         HGDIOBJ old = SelectObject(hdc, fontBold);
         const wchar_t* redirectLabel = g_codepageRedirectEnabled ? L"\x8F6C\x7801: \x5F00" : L"\x8F6C\x7801: \x5173";
         GetTextExtentPoint32W(hdc, redirectLabel, (int)wcslen(redirectLabel), &sz);
+        int px = GetCompatRow2SecondX();
         RECT r = { px, rowTop, px + sz.cx + 16, rowTop + COMPAT_ROW_H };
         if (result < 0 && x >= r.left && x < r.right) result = 2;
-        px = r.right + 8;
         SelectObject(hdc, old);
     }
-    {
-        HGDIOBJ old = SelectObject(hdc, font);
-        const wchar_t* redirectPreset = g_codepageRedirectPresets[g_codepageRedirectPresetIdx].label;
-        GetTextExtentPoint32W(hdc, redirectPreset, (int)wcslen(redirectPreset), &sz);
-        RECT r = { px, rowTop, px + sz.cx + 16 + SF(12), rowTop + COMPAT_ROW_H };
-        if (result < 0 && x >= r.left && x < r.right) result = 3;
-        SelectObject(hdc, old);
-    }
-
     ReleaseDC(NULL, hdc);
+
+    if (result < 0 && PointInRect(x, y, GetTextSubModePillRect())) result = 1;
+    if (result < 0 && PointInRect(x, y, GetCodepagePresetPillRect())) result = 3;
     return result;
+}
+
+// —— 弹出下拉菜单（兼容设置选择型按钮）——
+static RECT GetPopupAnchorRect(PickerPopupKind kind) {
+    switch (kind) {
+    case POPUP_SPOOF_CHARSET:   return GetSpoofCharsetPillRect();
+    case POPUP_TEXTSUB_MODE:    return GetTextSubModePillRect();
+    case POPUP_CODEPAGE_PRESET: return GetCodepagePresetPillRect();
+    default: return MakeUiRect(0, 0, 0, 0);
+    }
+}
+
+static int GetPopupItemCount(PickerPopupKind kind) {
+    switch (kind) {
+    case POPUP_SPOOF_CHARSET:   return g_spoofCharsetCount;
+    case POPUP_TEXTSUB_MODE:    return g_textSubstitutionModeCount;
+    case POPUP_CODEPAGE_PRESET: return g_codepageRedirectPresetCount;
+    default: return 0;
+    }
+}
+
+static const wchar_t* GetPopupItemLabel(PickerPopupKind kind, int index) {
+    switch (kind) {
+    case POPUP_SPOOF_CHARSET:
+        if (index >= 0 && index < g_spoofCharsetCount) return g_spoofCharsets[index].label;
+        break;
+    case POPUP_TEXTSUB_MODE:
+        if (index >= 0 && index < g_textSubstitutionModeCount) return g_textSubstitutionModes[index].label;
+        break;
+    case POPUP_CODEPAGE_PRESET:
+        if (index >= 0 && index < g_codepageRedirectPresetCount) return g_codepageRedirectPresets[index].label;
+        break;
+    }
+    return L"";
+}
+
+static int GetPopupSelectedIndex(PickerPopupKind kind) {
+    switch (kind) {
+    case POPUP_SPOOF_CHARSET:   return g_spoofCharsetIdx;
+    case POPUP_TEXTSUB_MODE:    return g_textSubstitutionModeIdx;
+    case POPUP_CODEPAGE_PRESET: return g_codepageRedirectPresetIdx;
+    default: return -1;
+    }
+}
+
+static int GetPopupItemHeight() { return SF(22); }
+static int GetPopupPad() { return SF(4); }
+
+// 菜单面板：锚定药丸下方；空间不足改向上弹出；横向夹在窗口内。
+static bool GetPopupPanelRect(PickerPopupKind kind, RECT* outPanel, int* outItemH) {
+    int count = GetPopupItemCount(kind);
+    if (count <= 0) return false;
+    RECT anchor = GetPopupAnchorRect(kind);
+    int itemH = GetPopupItemHeight();
+    int pad = GetPopupPad();
+
+    HDC hdc = GetDC(NULL);
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HGDIOBJ old = SelectObject(hdc, font);
+    int maxW = 0;
+    for (int i = 0; i < count; ++i) {
+        const wchar_t* label = GetPopupItemLabel(kind, i);
+        SIZE sz; GetTextExtentPoint32W(hdc, label, (int)wcslen(label), &sz);
+        if (sz.cx > maxW) maxW = sz.cx;
+    }
+    SelectObject(hdc, old);
+    ReleaseDC(NULL, hdc);
+
+    int panelW = maxW + SF(34);
+    int anchorW = anchor.right - anchor.left;
+    if (panelW < anchorW) panelW = anchorW;
+    int panelH = pad * 2 + itemH * count;
+
+    int left = anchor.left;
+    int maxLeft = WINDOW_WIDTH - panelW - SF(6);
+    if (left > maxLeft) left = maxLeft;
+    if (left < SF(6)) left = SF(6);
+
+    int top = anchor.bottom + SF(2);
+    if (top + panelH > WINDOW_HEIGHT - SF(6))
+        top = anchor.top - panelH - SF(2);
+    if (top < SF(6)) top = SF(6);
+
+    *outPanel = MakeUiRect(left, top, left + panelW, top + panelH);
+    if (outItemH) *outItemH = itemH;
+    return true;
+}
+
+static RECT GetPopupItemRect(const RECT& panel, int itemH, int index) {
+    int pad = GetPopupPad();
+    int top = panel.top + pad + index * itemH;
+    return MakeUiRect(panel.left + pad, top, panel.right - pad, top + itemH);
+}
+
+// 返回命中的条目索引；-1 表示未命中任何条目（面板空白或面板外）。
+static int PopupHitTest(int x, int y) {
+    if (g_popupKind == POPUP_NONE) return -1;
+    RECT panel; int itemH = 0;
+    if (!GetPopupPanelRect(g_popupKind, &panel, &itemH)) return -1;
+    int count = GetPopupItemCount(g_popupKind);
+    for (int i = 0; i < count; ++i) {
+        if (PointInRect(x, y, GetPopupItemRect(panel, itemH, i))) return i;
+    }
+    return -1;
 }
 
 struct MetricStepperRects {

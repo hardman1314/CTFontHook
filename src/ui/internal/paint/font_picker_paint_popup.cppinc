@@ -1,0 +1,52 @@
+// 兼容设置「选择型」按钮的弹出下拉菜单。
+// 在 PaintWindow 最后调用 → 叠加绘制在最上层；只覆盖显示，不移动/改变任何其他组件。
+static void PaintPopupMenu(HDC mem, const RECT& rc)
+{
+    (void)rc;
+    if (g_popupKind == POPUP_NONE) return;
+    RECT panel; int itemH = 0;
+    if (!GetPopupPanelRect(g_popupKind, &panel, &itemH)) return;
+
+    // 面板阴影（近似：外扩的深色圆角）+ 底板
+    RECT shadow = panel;
+    InflateRect(&shadow, SF(2), SF(2));
+    FillRoundRect(mem, shadow, SF(9), RGB(0x0c, 0x11, 0x18));
+    FillRoundRect(mem, panel, SF(6), COL_PANEL_BG);
+    DrawRoundRectOutline(mem, panel, SF(6), COL_BORDER);
+
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HGDIOBJ oldFont = SelectObject(mem, font);
+
+    int count = GetPopupItemCount(g_popupKind);
+    int selected = GetPopupSelectedIndex(g_popupKind);
+    for (int i = 0; i < count; ++i) {
+        RECT item = GetPopupItemRect(panel, itemH, i);
+        bool isSel = (i == selected);
+        bool isHov = (i == g_popupHoveredItem);
+        if (isHov) FillRoundRect(mem, item, SF(4), COL_BTN_HOV);
+
+        const wchar_t* label = GetPopupItemLabel(g_popupKind, i);
+        SetTextColor(mem, isSel ? COL_ACCENT : (isHov ? COL_TEXT : COL_TEXT_DIM));
+        RECT textRc = item;
+        textRc.left += SF(9);
+        textRc.right -= (isSel ? SF(20) : SF(7));
+        DrawTextW(mem, label, -1, &textRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+        if (isSel) {
+            // 选中标记：右端圆点
+            int cx = item.right - SF(9);
+            int cy = (item.top + item.bottom) / 2;
+            int r = max(2, SF(3));
+            HBRUSH br = CreateSolidBrush(COL_ACCENT);
+            HGDIOBJ ob = SelectObject(mem, br);
+            HGDIOBJ op = SelectObject(mem, GetStockObject(NULL_PEN));
+            Ellipse(mem, cx - r, cy - r, cx + r, cy + r);
+            SelectObject(mem, op);
+            SelectObject(mem, ob);
+            DeleteObject(br);
+        }
+    }
+
+    SelectObject(mem, oldFont);
+}

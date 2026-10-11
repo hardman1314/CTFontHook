@@ -1,0 +1,9 @@
+﻿// CTFontHook 安装器：单文件安装包内嵌的 winmm.dll 载荷。
+// 说明：本文件必须保留 UTF-8 BOM（rc.exe 按 ANSI/GBK 读源文件，无 BOM 时中文注释会吞行）。
+// 资源文件的相对路径以本工程目录（installer\）为基准，因此 ..\Release\ = 仓库根的 Release\。
+// 构建前提：先编译 DLL，再编译安装器（一键测试 / 一键打包 已保证该顺序）。
+#include <windows.h>
+#include "resource.h"
+
+IDR_PAYLOAD_DLL32 RCDATA "..\\Release\\winmm.dll"
+IDR_PAYLOAD_DLL64 RCDATA "..\\x64\\Release\\winmm.dll"

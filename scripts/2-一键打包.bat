@@ -6,8 +6,8 @@ echo ============================================================
 echo   CTFontHook 一键打包
 echo ============================================================
 echo   项目根目录 : %ROOT%
-echo   作用：把 32 位和 64 位 DLL 与安装器编译好，连同版本号、
-echo         使用说明一起汇总成压缩包，方便发给用游戏的朋友。
+echo   作用：把 32 位和 64 位 DLL 与安装器编译好，产出一个单文件安装包
+echo         （已内嵌 winmm.dll）和一个完整发布包压缩包，方便发给用游戏的朋友。
 echo ============================================================
 echo.
 
@@ -30,7 +30,8 @@ if errorlevel 1 goto :build_fail
 echo.
 
 echo [3/5] 编译安装器 Release ...
-"%MSBUILD%" "%ROOT%\installer\CTFontHookInstaller.vcxproj" /nologo /v:minimal /p:Configuration=Release /p:Platform=Win32 /t:Build
+REM 安装器内嵌 DLL 资源：MSBuild 不追踪 payload.rc 对 winmm.dll 的依赖，必须 Rebuild 才会重新内嵌。
+"%MSBUILD%" "%ROOT%\installer\CTFontHookInstaller.vcxproj" /nologo /v:minimal /p:Configuration=Release /p:Platform=Win32 /t:Rebuild
 if errorlevel 1 goto :build_fail
 echo.
 
@@ -103,16 +104,24 @@ echo      已放入 CTFontHook-Setup.exe 与 32bit\ 64bit\ 的 winmm.dll
 echo      已生成 版本.txt 与 使用说明.txt
 
 echo.
-echo [5/5] 生成压缩包 ...
+echo [5/5] 生成压缩包与单文件安装包 ...
 if exist "%ROOT%\dist\%PKGNAME%.zip" del /q "%ROOT%\dist\%PKGNAME%.zip"
 powershell -NoProfile -Command "Compress-Archive -Path '%PKGDIR%\*' -DestinationPath '%ROOT%\dist\%PKGNAME%.zip' -Force"
 if errorlevel 1 (echo [错误] 压缩失败。 & echo. & pause & exit /b 1)
-echo      完成 : %ROOT%\dist\%PKGNAME%.zip
+echo      完整发布包   : %ROOT%\dist\%PKGNAME%.zip
+
+REM 单文件安装包：安装器已内嵌 DLL，单独放一份到 dist，便于作为 GitHub Release 附件发布。
+set "SETUP_STANDALONE=%ROOT%\dist\CTFontHook-Setup-%VER%.exe"
+copy /y "%SETUP%" "%SETUP_STANDALONE%" >nul
+if errorlevel 1 (echo [错误] 复制单文件安装包失败。 & echo. & pause & exit /b 1)
+echo      单文件安装包 : %SETUP_STANDALONE%
 
 echo.
 echo ============================================================
 echo 结论：打包完成！
-echo        压缩包位置：%ROOT%\dist\%PKGNAME%.zip
+echo        单文件安装包：%SETUP_STANDALONE%
+echo        （双击即可安装，已内嵌 32/64 位 winmm.dll）
+echo        完整发布包  ：%ROOT%\dist\%PKGNAME%.zip
 echo        （已为你打开 dist 文件夹）
 echo ============================================================
 start "" "%ROOT%\dist"

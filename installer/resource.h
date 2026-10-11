@@ -22,3 +22,7 @@
 
 // 应用图标（由 app.ico 提供多尺寸位图，EXE 文件图标与窗口图标共用）。
 #define IDI_APPICON           2001
+
+// 单文件安装包内嵌的 winmm.dll 载荷（RCDATA；取值 > 2048，与控件 ID 区间隔离）。
+#define IDR_PAYLOAD_DLL32     3001
+#define IDR_PAYLOAD_DLL64     3002

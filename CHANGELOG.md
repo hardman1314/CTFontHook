@@ -3,6 +3,21 @@
 本项目遵循「一个任务一个提交」的原则，每次可交付的改动在此登记。
 更细的开发过程记录见 `docs/DEV/DEV_LOG.md`。
 
+## [0.1.1] - 2026-10-11
+
+### 新增
+- 安装器改为**单文件安装包**：把 32/64 位 `winmm.dll` 以 `RCDATA` 内嵌进安装器
+  （`installer/payload.rc` + `main.cpp` 的 `ExtractEmbeddedDll()`），安装时若缺少同级
+  `32bit\` / `64bit\` 目录则释放内嵌 DLL。`一键打包` 额外产出
+  `dist\CTFontHook-Setup-<版本>.exe`，可单独作为 Release 附件发布。
+- 新增 `docs/DEV/RELEASE_GUIDE.md`（GitHub Release 发布指南）与
+  `docs/DEV/RELEASE_NOTES_TEMPLATE.md`（发布说明模板）。
+
+### 变更
+- 开源发布：仓库公开于 <https://github.com/hardman1314/CTFontHook>；
+  `LICENSE.txt` 版权行填真实权利人；新增 `.gitattributes`、`THIRD-PARTY-NOTICES.md`；
+  `.gitignore` 忽略 `/设计图/`。
+
 ## [0.1.0] - 2026-10-11
 
 ### 新增

@@ -8,9 +8,11 @@
   安装器三改 B1+B2+B3 / 任务 C / P1-3 / P1-4 / P2-1 / P2-3 / P2-2），均已通过编译验证；
   **唯一剩余 P1 为真机验证**（P2-2 的路线 B「游戏自身文字」降级 P3）。
 - **版本**：`0.1.0`（基线，Git 标签 `v0.1.0`）。
-- **仓库**：`D:\CTLIB\FontHook\CTFontHook`（本地 Git，分支 `master`）。
+- **仓库**：`D:\CTLIB\FontHook\CTFontHook`（本地 Git，分支 `master`）；
+  **已在 GitHub 公开**：<https://github.com/hardman1314/CTFontHook>（已推送 `master` 与 tag `v0.1.0`）。
 - **可用能力**：环境自检、一键编译测试、一键打包、一键备份、一键回退（均已实测通过）；
-  一键测试 / 打包**已包含安装器**（`CTFontHook-Setup.exe`）的构建与校验。
+  一键测试 / 打包**已包含安装器**（`CTFontHook-Setup.exe`）的构建与校验；
+  一键打包**额外产出单文件安装包** `dist\CTFontHook-Setup-<版本>.exe`（已内嵌 32/64 位 DLL，可单独发布）。
 - **外层隔离**：`D:\CTLIB\.gitignore` 已加入 `/FontHook/`，本仓库不会被 Chrono Tide 主仓嵌套跟踪。
 - **产物**：[`USER_FLOW.md`](USER_FLOW.md)（全流程现状 + 15 条痛点）；
   [`features/`](features/)（应用字体按钮 / 热键兜底 / 部署自动化 / 字符集预选与重启提示 /
@@ -84,6 +86,15 @@
    改为取**列表区实时尺寸**（`listRc.right-left` / `bottom-top`），CROP 覆盖算法与左上锚点不变
    → **4/4 编译通过**。详见 `DEV_LOG.md` 与
    [`features/界面重构-设计稿复刻.md`](features/界面重构-设计稿复刻.md) §3.7（**待主人真机验证**）。
+25. **开源发布前准备（2026-10-11）**：新建 GitHub 公开仓库 `hardman1314/CTFontHook` 并推送
+   `master` 与 tag `v0.1.0`；`LICENSE.txt` 版权行填真实权利人 `hardman1314`；
+   新增 `.gitattributes`（仅锁 `*.bat`/`*.cmd` 为 CRLF + 二进制 `binary`，**不用 `text=auto`**）、
+   `THIRD-PARTY-NOTICES.md`（SimpleFontHook/Detours/UPX）；`.gitignore` 忽略 `/设计图/`。
+   详见 `DEV_LOG.md`。
+26. **单文件安装包（2026-10-11）**：安装器内嵌两个 Release DLL（`installer/payload.rc` +
+   `main.cpp` 的 `ExtractEmbeddedDll()`），`2-一键打包.bat` 额外产出 `dist\CTFontHook-Setup-<版本>.exe`
+   → **一键测试 4/4 通过**，`pefile` 复核内嵌 DLL 与磁盘 DLL 逐字节一致。
+   详见 `DEV_LOG.md` 与 `docs/build-and-release.md`「安装器与单文件安装包」（**待主人真机验证**）。
 
 ## 进行中（用户已批准的《变更计划》，尚未实现）
 
@@ -106,6 +117,10 @@
 
 ## 下一步（按优先级）
 
+- **P0（待主人决定）**：把 `dist\CTFontHook-Setup-0.1.1.exe` 发布到 GitHub Release
+  （步骤见 [`RELEASE_GUIDE.md`](RELEASE_GUIDE.md)，说明模板见
+  [`RELEASE_NOTES_TEMPLATE.md`](RELEASE_NOTES_TEMPLATE.md)）。
+  版本已升至 `0.1.1`（`VERSION` / `CHANGELOG.md` / `installer/version.rc` 已同步）。
 - **P1**：**真机验证**已落地的各项——①「应用此字体」按钮手感与行内「应用」按钮；
   ②「三热键全占用」场景下的最小化兜底与标题栏提示；③安装器对真实游戏目录的「安装 → 进游戏 → 卸载还原」闭环；
   ④字符集智能预选是否命中真实编码；⑤应用后提示条观感；⑥无写权限目录下保存失败的告警提示；
@@ -126,6 +141,10 @@
 ## 注意事项
 
 - 最终产物 DLL 必须仍叫 `winmm.dll`，不要改。
+- **安装器内嵌 DLL 的构建顺序**：`installer/payload.rc` 引用 `..\Release\winmm.dll` 与
+  `..\x64\Release\winmm.dll`，必须先编译 DLL 再编译安装器；**单独**在 VS 里编译安装器工程前
+  也要确保这两个 DLL 已存在，否则 `rc.exe` 报找不到文件。打包脚本对安装器用 `/t:Rebuild`
+  （MSBuild 不追踪 `.rc` 对 DLL 的依赖，增量 `Build` 可能嵌到旧 DLL）。
 - **RC 参与的文件必须带 UTF-8 BOM**（`installer/resource.h`、`installer/version.rc`、`src/CTFontHook.rc`）：
   `rc.exe` 不吃 `/utf-8`，无 BOM 时会把中文注释结尾字节当成 GBK 前导字节、吞掉下一行代码
   （2026-10-11 曾因此让 `IDI_APPICON` 失效、安装器图标变系统默认图标）。

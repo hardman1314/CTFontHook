@@ -141,6 +141,28 @@ pack_release.bat all
 
 如需签名，应在压缩完成后对最终发布副本签名；压缩已签名文件会使原签名失效。
 
+## 安装器与单文件安装包
+
+`installer/` 是面向玩家的 GUI 安装器，产物为 `installer/bin/Win32/Release/CTFontHook-Setup.exe`。
+它支持两种投放形态：
+
+| 形态 | 取 DLL 的方式 | 由谁产出 |
+| --- | --- | --- |
+| 完整发布包（zip） | 读同级目录 `32bit\winmm.dll` / `64bit\winmm.dll` | `scripts/2-一键打包.bat` 生成的 `dist\CTFontHook-<版本>-<时间>.zip` |
+| 单文件安装包（exe） | 同级目录不存在时，释放**自身内嵌**的 DLL | `dist\CTFontHook-Setup-<版本>.exe` |
+
+内嵌机制：`installer/payload.rc` 把两个 Release DLL 作为 `RCDATA`（资源 ID `3001` / `3002`）
+打进安装器；`main.cpp` 的 `ExtractEmbeddedDll()` 在需要时将其释放到 `%TEMP%\CTFontHook_<pid>\`，
+复制完成后删除临时文件与目录。因此单文件安装包可脱离 `32bit\` / `64bit\` 目录独立分发。
+
+构建约束：
+
+- `payload.rc` 引用构建产物 `..\Release\winmm.dll` 与 `..\x64\Release\winmm.dll`，
+  **必须先编译 DLL、再编译安装器**；`1-一键测试.bat` / `2-一键打包.bat` 已固定该顺序。
+- MSBuild 不追踪 `payload.rc` 对 DLL 的依赖，仅增量 `Build` 可能嵌到旧 DLL，
+  因此打包脚本对安装器使用 **`/t:Rebuild`**。
+- 单独在 Visual Studio 里编译安装器工程前，需先确保两个 Release DLL 已存在，否则 `rc.exe` 报找不到文件。
+
 ## 发布检查清单
 
 1. Win32 与 x64 Release 均编译成功。
@@ -153,6 +175,8 @@ pack_release.bat all
 8. 只把匹配目标进程架构的 DLL 放入目标目录。
 9. 对需要复刻的引擎样本，按 [功能证据与复刻流程](reproduction.md) 保存样本哈希、配置、
    日志和正负验证结果。
+10. 安装器内嵌资源 `RT_RCDATA 3001` / `3002` 与两个 Release DLL **逐字节一致**，图标 `RT_GROUP_ICON 2001` 仍在。
+11. 单文件安装包在**没有** `32bit\` / `64bit\` 目录的情况下能完成安装（真机验证）。
 
 ## 回滚
 

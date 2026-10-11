@@ -7,7 +7,8 @@
 // 设计约束：
 //  - 只做「安装 / 卸载」，不做启动游戏、不做导入预判（后续版本再增强）。
 //  - 清单需管理员权限（RequireAdministrator），装入 Program Files 也能成功。
-//  - 静态链接 CRT，随发布包分发即可运行；从自身同级目录读取 32bit\ / 64bit\winmm.dll。
+//  - 静态链接 CRT，可单文件分发；优先从自身同级目录读取 32bit\ / 64bit\winmm.dll，
+//    没有同级目录时回退到自身内嵌的 DLL（单文件安装包场景）。
 //
 // 注意：本文件保存为 UTF-8，工程使用 /utf-8 编译，因此源码中的中文可安全用于宽字符字面量。
 
@@ -494,6 +495,50 @@ bool RemoveGameRecord(const std::wstring& dir) {
 }
 
 // ---------------------------------------------------------------------------
+// 内嵌 DLL 载荷（单文件安装包）
+// ---------------------------------------------------------------------------
+
+// 自身内嵌的对应架构 winmm.dll 资源；不存在返回 nullptr。
+HRSRC EmbeddedDllResource(WORD machine) {
+    WORD id = (machine == IMAGE_FILE_MACHINE_I386) ? IDR_PAYLOAD_DLL32 : IDR_PAYLOAD_DLL64;
+    return FindResourceW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(id), RT_RCDATA);
+}
+
+// 把内嵌的对应架构 winmm.dll 释放到临时目录，返回释放出的路径；失败返回空串。
+// 单文件安装包没有同级 32bit\ / 64bit\ 目录，就靠这里取出 DLL。
+std::wstring ExtractEmbeddedDll(WORD machine) {
+    HMODULE mod = GetModuleHandleW(nullptr);
+    HRSRC res = EmbeddedDllResource(machine);
+    if (!res) return std::wstring();
+    DWORD size = SizeofResource(mod, res);
+    if (size == 0) return std::wstring();
+    HGLOBAL gl = LoadResource(mod, res);
+    if (!gl) return std::wstring();
+    const void* data = LockResource(gl);
+    if (!data) return std::wstring();
+
+    wchar_t tmp[MAX_PATH] = {};
+    DWORD n = GetTempPathW(MAX_PATH, tmp);
+    if (n == 0 || n >= MAX_PATH) return std::wstring();
+    std::wstring dir = std::wstring(tmp) + L"CTFontHook_" +
+                       std::to_wstring(GetCurrentProcessId());
+    if (!EnsureDir(dir)) return std::wstring();
+
+    std::wstring path = dir + L"\\winmm.dll";
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return std::wstring();
+    DWORD written = 0;
+    BOOL ok = WriteFile(h, data, size, &written, nullptr);
+    CloseHandle(h);
+    if (!ok || written != size) {
+        DeleteFileW(path.c_str());
+        return std::wstring();
+    }
+    return path;
+}
+
+// ---------------------------------------------------------------------------
 // 安装 / 卸载
 // ---------------------------------------------------------------------------
 
@@ -525,10 +570,12 @@ bool DoInstall() {
         return false;
     }
 
-    std::wstring ourDll = ExeDir() + L"\\" + ArchSubDir(m) + L"\\winmm.dll";
-    if (!FileExists(ourDll)) {
+    // 优先用发布包内同级目录的 DLL；单文件安装包没有这些目录，改用内嵌 DLL（稍后释放）。
+    std::wstring siblingDll = ExeDir() + L"\\" + ArchSubDir(m) + L"\\winmm.dll";
+    bool useEmbedded = !FileExists(siblingDll);
+    if (useEmbedded && !EmbeddedDllResource(m)) {
         Log(std::wstring(L"[错误] 发布包中缺少 ") + ArchSubDir(m) +
-            L"\\winmm.dll，请在完整解压后的发布包内运行本安装器。");
+            L"\\winmm.dll，且安装器内也未内嵌该 DLL。");
         return false;
     }
 
@@ -564,9 +611,23 @@ bool DoInstall() {
         CopyFileW(dstIni.c_str(), (bakDir + L"\\backup\\FontHook.ini").c_str(), FALSE);
     }
 
+    std::wstring ourDll = siblingDll;
+    if (useEmbedded) {
+        ourDll = ExtractEmbeddedDll(m);
+        if (ourDll.empty()) {
+            Log(L"[错误] 释放内嵌 winmm.dll 失败（临时目录不可写？）。");
+            return false;
+        }
+    }
+
     if (!CopyFileW(ourDll.c_str(), dstDll.c_str(), FALSE)) {
         Log(L"[错误] 复制 winmm.dll 失败（可能被占用或无写入权限）。");
+        if (useEmbedded) DeleteFileW(ourDll.c_str());
         return false;
+    }
+    if (useEmbedded) {
+        DeleteFileW(ourDll.c_str());
+        RemoveDirectoryW(DirNameOf(ourDll).c_str());
     }
 
     WriteManifest(manifest, m, hadWinmm, hadIni);

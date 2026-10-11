@@ -31,6 +31,42 @@
 
 ---
 
+## 2026-10-11　单文件安装包：安装器内嵌 DLL + 一键打包产出安装包
+
+- **任务**：主人希望「发布的不是压缩包，而是安装包」，并把安装包制作并入一键打包。
+- **背景（审计结论）**：`2-一键打包.bat` 早已编译安装器并放进 zip，但 `CTFontHook-Setup.exe`
+  必须与同级 `32bit\` / `64bit\` 目录一起运行（旧 `main.cpp:528-531` 的
+  「请在完整解压后的发布包内运行」），因此**无法作为单个文件发布**。
+- **改动文件**（6 个，全部在批准的计划内）：
+  - `installer/resource.h`：新增 `IDR_PAYLOAD_DLL32 3001` / `IDR_PAYLOAD_DLL64 3002`（>2048，避开控件 ID 区间）。
+  - **新增** `installer/payload.rc`（UTF-8 BOM）：把 `..\Release\winmm.dll`、`..\x64\Release\winmm.dll`
+    以 `RCDATA` 内嵌进安装器。
+  - `installer/CTFontHookInstaller.vcxproj`：新增 `<ResourceCompile Include="payload.rc" />`。
+  - `installer/main.cpp`：新增 `EmbeddedDllResource()` / `ExtractEmbeddedDll()`；`DoInstall()` 改为
+    「同级目录优先 → 缺失则释放内嵌 DLL 到 `%TEMP%\CTFontHook_<pid>\`」，复制完成后删除临时文件与目录；
+    顶部注释同步。
+  - `scripts/2-一键打包.bat`（GBK+CRLF）：安装器编译改 `/t:Rebuild`（MSBuild 不追踪 .rc 对 DLL 的依赖）；
+    第 5 步新增把单文件安装器复制为 `dist\CTFontHook-Setup-<VER>.exe`；结论与自我描述同步。
+  - 文档：`docs/build-and-release.md`（新增「安装器与单文件安装包」+ 检查清单 2 条）、
+    `docs/DEV/README.md`、`docs/DEV/SESSION_HANDOFF.md`、**新增** `docs/DEV/RELEASE_GUIDE.md`
+    与 `docs/DEV/RELEASE_NOTES_TEMPLATE.md`。
+  - 版本：`VERSION` → `0.1.1`、`CHANGELOG.md` 追加 `[0.1.1]`、
+    `installer/version.rc` 版本号同步为 `0,1,1,0` / `0.1.1.0`。
+- **明确不改**：`src\`（DLL 本体）、产物名 `winmm.dll`、安装/卸载/清单逻辑、
+  `一键测试/备份/回退` 脚本、DLL 的 UPX 压缩方式。
+- **验证**：
+  - 单独 `msbuild installer\CTFontHookInstaller.vcxproj -t:Rebuild` → 退出码 0。
+  - `scripts\1-一键测试.bat` → **4/4 通过**（含双架构导出表校验）。
+  - `scripts\2-一键打包.bat` → 退出码 0，产出 `dist\CTFontHook-Setup-0.1.0.exe`（1,455,616 字节）。
+  - `pefile` 枚举安装器资源：`RT_RCDATA id=3001 size=590848`、`id=3002 size=620032`（均以 `MZ` 开头），
+    与 `Release/winmm.dll`、`x64/Release/winmm.dll` **逐字节相同**（True/True）；图标 `RT_GROUP_ICON id=2001` 仍在。
+- **偏差 / 限制**：⚠️ **未做真机验证**——未实际运行单文件安装器完成「选游戏 → 安装 → 卸载还原」闭环，
+  也未在**只有单个 exe、无 32bit/64bit 目录**的干净目录下实测释放路径；建议主人双击
+  `dist\CTFontHook-Setup-0.1.0.exe` 验证一次。zip 体积因内含单文件安装器由约 1.35MB 增至约 2.54MB
+  （同时保留 `32bit\`/`64bit\` 手动安装回退）。
+
+---
+
 ## 2026-10-11　开源前准备：版权署名 / 第三方声明 / 换行锁定 / 忽略设计图
 
 - **任务**：为新建 GitHub 公开仓库（`hardman1314/CTFontHook`，Public）做发布前清理。

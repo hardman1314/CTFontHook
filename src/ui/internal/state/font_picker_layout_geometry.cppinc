@@ -56,6 +56,14 @@ static RECT GetTextSubAreaRect() {
 static RECT GetListAreaRect() { return MakeUiRect(0, GetListTop(), WINDOW_WIDTH, GetListBottom()); }
 static RECT GetMetricsAreaRect() { return MakeUiRect(0, GetMetricsTop(), WINDOW_WIDTH, GetPreviewTop()); }
 static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
+// 预览区右下角「应用此字体」按钮：单击列表仍只选中，应用由该按钮触发。
+static RECT GetPreviewApplyButtonRect() {
+    int btnH = SF(24);
+    int btnW = SF(108);
+    int right = WINDOW_WIDTH - SF(14);
+    int bottom = WINDOW_HEIGHT - SF(6);
+    return MakeUiRect(right - btnW, bottom - btnH, right, bottom);
+}
 static RECT GetScrollbarAreaRect() {
     return MakeUiRect(WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN - 4,
         GetListTop(), WINDOW_WIDTH, GetListBottom());

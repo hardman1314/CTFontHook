@@ -277,6 +277,7 @@ static const float UI_SCALE_MAX = 1.8f;
 static const float UI_SCALE_STEP = 0.1f;
 static int SF(int base) { return (int)(base * g_uiScale + 0.5f); }
 static bool g_scrollbarHovered = false;
+static bool g_previewApplyHovered = false;
 static bool g_scrollbarDragging = false;
 static int g_scrollDragStartY = 0;
 static int g_scrollDragStartOffset = 0;

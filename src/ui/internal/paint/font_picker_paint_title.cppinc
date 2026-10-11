@@ -58,9 +58,11 @@ static void PaintTitleBar(HDC mem, const RECT& rc)
 
     HFONT countFont = GetCachedPickerFont(L"Segoe UI", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
     SelectObject(mem, countFont);
-    SetTextColor(mem, COL_TEXT_DIM);
+    SetTextColor(mem, g_toggleHotkeyRegistered ? COL_TEXT_DIM : RGB(240, 176, 96));
     wchar_t contextBuf[64] = {};
-    if (g_pickerPage == PICKER_PAGE_FONTS)
+    if (!g_toggleHotkeyRegistered)
+        wcscpy_s(contextBuf, L"无热键·关闭=最小化");
+    else if (g_pickerPage == PICKER_PAGE_FONTS)
         wsprintfW(contextBuf, L"%d 个字体", (int)g_filteredIndices.size());
     else
         wcscpy_s(contextBuf, L"快速上手");

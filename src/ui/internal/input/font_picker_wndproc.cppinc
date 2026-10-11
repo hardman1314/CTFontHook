@@ -120,6 +120,15 @@ static bool HandleCharsetClick(HWND hWnd, int x, int y) {
     return true;
 }
 
+static bool HandlePreviewApplyClick(HWND hWnd, int x, int y) {
+    if (!PointInRect(x, y, GetPreviewApplyButtonRect()))
+        return false;
+    ApplySelectedFont();
+    InvalidateListAndScrollbar(hWnd);
+    InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+    return true;
+}
+
 static bool HandleSpoofBarClick(HWND hWnd, int x, int y) {
     RECT area = GetSpoofAreaRect();
     if (!PointInRect(x, y, area))
@@ -499,6 +508,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
 
+        // Preview apply button hover
+        {
+            bool newApplyHover = PointInRect(x, y, GetPreviewApplyButtonRect());
+            if (newApplyHover != g_previewApplyHovered) {
+                g_previewApplyHovered = newApplyHover;
+                InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+            }
+        }
+
         // List hover
         int hi = ListIndexFromPoint(y);
         if (hi >= 0) {
@@ -524,7 +542,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             || g_spoofToggleHovered || g_spoofCharsetHovered
             || g_textSubstitutionHovered || g_textSubstitutionModeHovered
             || g_codepageRedirectHovered || g_codepageRedirectPresetHovered
-            || g_metricHovered != METRIC_NONE) {
+            || g_metricHovered != METRIC_NONE || g_previewApplyHovered) {
             int oldHovered = g_hoveredIndex;
             bool dirtyTitle = g_closeHovered || g_minHovered || g_zoomInHovered || g_zoomOutHovered ||
                 g_fontsPageTabHovered || g_guidePageTabHovered;
@@ -534,6 +552,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             bool dirtyTextSub = g_textSubstitutionHovered || g_textSubstitutionModeHovered ||
                 g_codepageRedirectHovered || g_codepageRedirectPresetHovered;
             bool dirtyMetrics = g_metricHovered != METRIC_NONE;
+            bool dirtyPreview = g_previewApplyHovered;
             bool dirtyGuide = ClearGuidePageHoverState();
             g_hoveredIndex = -1; g_closeHovered = false; g_minHovered = false; g_scrollbarHovered = false;
             g_hoveredCharset = -1; g_zoomInHovered = false; g_zoomOutHovered = false;
@@ -544,12 +563,14 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_codepageRedirectHovered = false;
             g_codepageRedirectPresetHovered = false;
             g_metricHovered = METRIC_NONE;
+            g_previewApplyHovered = false;
             if (dirtyTitle) InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
             if (dirtyScrollbar) InvalidateUiRect(hWnd, GetScrollbarAreaRect(), 2);
             if (dirtyCharset) InvalidateUiRect(hWnd, GetCharsetAreaRect(), 1);
             if (dirtySpoof) InvalidateUiRect(hWnd, GetSpoofAreaRect(), 1);
             if (dirtyTextSub) InvalidateUiRect(hWnd, GetTextSubAreaRect(), 1);
             if (dirtyMetrics) InvalidateUiRect(hWnd, GetMetricsAreaRect(), 1);
+            if (dirtyPreview) InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
             if (dirtyGuide) {
                 InvalidateUiRect(hWnd, GetGuideSectionTabsRect(), 1);
                 InvalidateUiRect(hWnd, GetGuideViewportRect(), 1);
@@ -575,7 +596,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             HandleSpoofBarClick(hWnd, x, y) ||
             HandleTextSubstitutionClick(hWnd, x, y) ||
             HandleMetricClick(hWnd, x, y) ||
-            HandleScrollbarClick(hWnd, x, y)) {
+            HandleScrollbarClick(hWnd, x, y) ||
+            HandlePreviewApplyClick(hWnd, x, y)) {
             return 0;
         }
 

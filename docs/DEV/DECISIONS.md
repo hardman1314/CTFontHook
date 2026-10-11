@@ -102,3 +102,42 @@ DLL 通过「同名代理劫持」随目标游戏加载：游戏加载同目录�
 
 ### 验证
 - `git grep -n "SimpleFontHook" -- src/` 的结果应全部落在上述运行期标识处。
+
+---
+
+## ADR-0005：部署自动化采用「独立 GUI 安装器」+ 备份/还原契约
+
+- 状态：已接受
+- 日期：2026-10-11
+- 取代：无
+
+### 背景
+「让字体替换生效」原本完全依赖用户手工：判断游戏 EXE 架构（32/64 位）→ 选对应 `winmm.dll`
+→ 备份游戏目录里已有的 `winmm.dll` / `FontHook.ini` → 复制 DLL → 回退时手工还原。
+小白极易卡在「判断架构」这一步，且回退无保障。
+
+### 决策
+- 形态：做**独立 GUI 安装器 EXE**（C++ Win32，`installer/`），随发布包分发；**不引入**第三方安装框架
+  （NSIS / Inno 等），不引入运行时依赖。
+- 范围：**仅安装 / 卸载**（最小可用）；不做更新检查、批量管理。
+- 安装器自身为 **32 位** EXE，产物名 `CTFontHook-Setup.exe`；**不加入 `CTFontHook.sln`**，
+  由一键脚本按 `installer\CTFontHookInstaller.vcxproj` 路径直接构建。
+- 架构判定以目标 EXE 的 **PE 头 `IMAGE_FILE_HEADER.Machine`** 为准（`0x014C`=32 位，`0x8664`=64 位）。
+- **备份/还原契约**：所有中间产物集中在 `<游戏目录>\.CTFontHook\`：
+  `backup\` 存原 `winmm.dll` / `FontHook.ini`，`manifest.ini` 记录 `HadWinmm` / `HadIni` / `DllArch`。
+  卸载**只依据** `manifest.ini` 决定是否还原；用户删除 `.CTFontHook` 即视为放弃自动还原。
+
+### 后果
+- 收益：装 / 卸变成「双击 → 选游戏 EXE → 点安装」，无需用户懂架构；回退有据可依。
+- 成本：发布包需保持「EXE 与 `32bit\`/`64bit\` 同目录」的结构，否则安装器找不到 DLL。
+- 风险：需管理员权限（游戏常在 `Program Files`），已在工程开启 UAC `requireAdministrator`。
+
+### 备选方案
+- 用 `.bat` + PowerShell 脚本自动化：仍需用户手动选路径、且杀软/权限体验差，未采用。
+- 第三方安装框架：引入体积与学习成本，超出「仅装 / 卸」的最小范围，未采用。
+
+### 验证
+- `scripts\1-一键测试.bat` 产出 `installer\bin\Win32\Release\CTFontHook-Setup.exe`（32 位、含 `requireAdministrator`）。
+- `scripts\2-一键打包.bat` 产出的 zip 含安装器与双架构 DLL。
+- 架构判定算法对 `System32` / `SysWOW64` `notepad.exe` 及本项目两种 `winmm.dll` 均判定正确。
+- 详见 [`features/部署自动化.md`](features/部署自动化.md)。

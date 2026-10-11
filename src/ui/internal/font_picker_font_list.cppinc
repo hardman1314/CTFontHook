@@ -795,7 +795,7 @@ static void ApplySelectedFont() {
     ForceGameRedraw();
     DWORD redrawElapsed = GetTickCount() - redrawStartTick;
     DWORD saveStartTick = GetTickCount();
-    SavePickerConfig();
+    bool configSaved = SavePickerConfig();
     DWORD saveElapsed = GetTickCount() - saveStartTick;
     DWORD totalElapsed = GetTickCount() - applyStartTick;
     if (totalElapsed >= 20 || nameResolveElapsed >= 10 || saveElapsed >= 10) {
@@ -807,7 +807,14 @@ static void ApplySelectedFont() {
         name.c_str(), totalElapsed, g_appliedFont.c_str());
 
     // P1-2：应用后一次性提示（部分游戏对象不会自动刷新，需重启游戏），几秒后自动消失。
-    g_applyToastText = L"已应用「" + name + L"」；若游戏内未刷新，请重启游戏。";
+    // P1-4：保存失败时改用告警色提示，明确告知本次改动不会持久化。
+    if (configSaved) {
+        g_applyToastError = false;
+        g_applyToastText = L"已应用「" + name + L"」；若游戏内未刷新，请重启游戏。";
+    } else {
+        g_applyToastError = true;
+        g_applyToastText = L"保存失败：无法写入配置文件，重启游戏后会丢失（游戏目录可能无写入权限）。";
+    }
     if (g_hWnd && IsWindow(g_hWnd)) {
         KillTimer(g_hWnd, PICKER_APPLY_TOAST_TIMER_ID);
         SetTimer(g_hWnd, PICKER_APPLY_TOAST_TIMER_ID, APPLY_TOAST_MS, NULL);

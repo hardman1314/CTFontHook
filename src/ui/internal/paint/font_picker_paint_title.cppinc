@@ -63,9 +63,9 @@ static void PaintTitleBar(HDC mem, const RECT& rc)
     if (!g_toggleHotkeyRegistered)
         wcscpy_s(contextBuf, L"无热键·关闭=最小化");
     else if (g_pickerPage == PICKER_PAGE_FONTS)
-        wsprintfW(contextBuf, L"%d 个字体", (int)g_filteredIndices.size());
+        wsprintfW(contextBuf, L"%d 个字体 · ×=隐藏", (int)g_filteredIndices.size());
     else
-        wcscpy_s(contextBuf, L"快速上手");
+        wcscpy_s(contextBuf, L"快速上手 · ×=隐藏");
     RECT contextRc = { pageTabs.guide.right + 8, 0, zoomOutLeft - 4, TITLE_HEIGHT };
     if (contextRc.right - contextRc.left >= 42) {
         DrawTextW(mem, contextBuf, -1, &contextRc,

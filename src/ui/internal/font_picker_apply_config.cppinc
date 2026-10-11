@@ -91,7 +91,7 @@ static void ForceGameRedraw() {
     QueueGameFontNotify(version);
 }
 
-static void SavePickerConfig() {
+static bool SavePickerConfig() {
     bool saveVisibleSource =
         !g_metricCloneFace.empty() &&
         !g_metricCloneSourceFace.empty() &&
@@ -109,12 +109,13 @@ static void SavePickerConfig() {
         Config::ForcedFontNameA[LF_FACESIZE - 1] = '\0';
     }
 
-    Utils::SaveConfig(g_hModule);
+    bool ok = Utils::SaveConfig(g_hModule);
 
     if (saveVisibleSource) {
         wcsncpy_s(Config::ForcedFontNameW, backupNameW, _TRUNCATE);
         strncpy_s(Config::ForcedFontNameA, backupNameA, _TRUNCATE);
     }
+    return ok;
 }
 
 static void RefreshFontHookEnabled() {

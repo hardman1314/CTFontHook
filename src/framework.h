@@ -112,7 +112,7 @@ namespace Utils {
     void MarkFontSwitchForWatchdog(LONG version, const wchar_t* fontName);
     BOOL LoadCustomFont(HMODULE hModule);
     std::string GetFontEnglishName(HFONT hFont);
-    void SaveConfig(HMODULE hModule);
+    bool SaveConfig(HMODULE hModule);
     bool LoadConfig(HMODULE hModule);
 }
 

@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-10-11　体验重构：关闭语义文案 + 保存失败提示（P1-3 / P1-4）
+
+- **任务**：P1-3 澄清主界面「× 只是隐藏窗口、不退出游戏」；P1-4 把「配置写盘失败」从静默日志改为用户可见提示。
+- **改动文件**（8 个，全部在计划内）：
+  - `paint/font_picker_paint_title.cppinc`：标题栏副文案在字体页/指南页追加「· ×=隐藏」（无热键分支保持「关闭=最小化」）。
+  - `framework.h` / `utils.cpp`：`Utils::SaveConfig` 由 `void` 改为 `bool`（写盘失败 `return false`，成功 `return true`）。
+  - `font_picker_apply_config.cppinc`：`SavePickerConfig()` 改为 `bool`，透传 `SaveConfig` 结果。
+  - `state/font_picker_state.cppinc`：新增 `g_applyToastError` 与警示色 `COL_WARN = RGB(240,176,96)`。
+  - `font_picker_font_list.cppinc`：`ApplySelectedFont()` 捕获保存结果 —— 成功走原提示，失败改用告警文案。
+  - `paint/font_picker_paint_preview.cppinc`：提示条按 `g_applyToastError` 取警示色/强调色。
+  - `input/font_picker_wndproc.cppinc`：`WM_TIMER` 清提示时一并复位 `g_applyToastError`。
+- **做法**：P1-3 复用标题栏既有副文案区（零新增状态）；P1-4 复用任务 C 的 toast 通道（仅加一个错误标志）。
+  **有意只覆盖「应用字体」主路径**，高级页（缩放/伪代码页等）保存失败仍静默。
+- **验证**（实测）：`scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过；`git status`/`git diff --stat` 仅计划内 8 文件。
+- **遗留**：未做真机验证（无写权限目录下的失败提示、标题栏文案实际观感）。
+
+---
+
 ## 2026-10-11　体验重构：字符集智能预选 + 应用后重启提示（任务 C：P1-1 / P1-2）
 
 - **任务**：P1-1 按游戏检测到的编码自动预选字符集；P1-2 应用字体后提示「可能需要重启游戏」。

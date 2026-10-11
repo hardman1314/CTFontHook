@@ -267,6 +267,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (wParam == PICKER_APPLY_TOAST_TIMER_ID) {
             KillTimer(hWnd, PICKER_APPLY_TOAST_TIMER_ID);
             g_applyToastText.clear();
+            g_applyToastError = false;
             InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
             return 0;
         }

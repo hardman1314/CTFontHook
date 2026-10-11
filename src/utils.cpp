@@ -827,7 +827,7 @@ namespace Utils {
         AppendIniText(output, key, buffer);
     }
 
-    void SaveConfig(HMODULE hModule) {
+    bool SaveConfig(HMODULE hModule) {
         std::wstring iniPath = GetIniPath(hModule);
 
         std::string out;
@@ -925,7 +925,7 @@ namespace Utils {
         HANDLE hFile = CreateFileW(iniPath.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile == INVALID_HANDLE_VALUE) {
             Log("[Config] Failed to write INI file");
-            return;
+            return false;
         }
         DWORD written;
         // UTF-8 BOM
@@ -935,6 +935,7 @@ namespace Utils {
         CloseHandle(hFile);
 
         LogW(L"[Config] Saved config to %s (Font: %s)", iniPath.c_str(), Config::ForcedFontNameW);
+        return true;
     }
 
     bool LoadConfig(HMODULE hModule) {

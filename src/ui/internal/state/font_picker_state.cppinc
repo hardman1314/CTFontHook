@@ -242,6 +242,7 @@ static const COLORREF COL_ACCENT3      = RGB(210, 160, 255);     // soft violet
 static const COLORREF COL_BORDER       = RGB(85, 60, 120);
 static const COLORREF COL_CLOSE_HOV    = RGB(240, 70, 100);
 static const COLORREF COL_BTN_HOV      = RGB(75, 55, 110);
+static const COLORREF COL_WARN         = RGB(240, 176, 96);      // amber, for warnings
 
 //  Scrollbar
 static const COLORREF COL_SB_TRACK     = RGB(32, 26, 50);
@@ -294,6 +295,8 @@ static bool g_charsetSelectionSet = false;
 static const UINT_PTR PICKER_APPLY_TOAST_TIMER_ID = 0x5347;
 static const UINT APPLY_TOAST_MS = 4000;
 static std::wstring g_applyToastText;
+// P1-4：提示条是否为失败告警（保存配置失败时改用警示色）。
+static bool g_applyToastError = false;
 
 static HDC g_paintMemDC = NULL;
 static HBITMAP g_paintBitmap = NULL;

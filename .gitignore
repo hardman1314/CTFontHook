@@ -13,6 +13,10 @@
 /src/Win32/
 /src/x64/
 
+# 安装器构建产物
+/installer/bin/
+/installer/obj/
+
 # 构建中间文件
 *.obj
 *.tlog

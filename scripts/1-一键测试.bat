@@ -6,7 +6,7 @@ echo ============================================================
 echo   CTFontHook 一键测试（编译 + 导出校验）
 echo ============================================================
 echo   项目根目录 : %ROOT%
-echo   作用：把源码编译成 winmm.dll（32 位和 64 位各一份），
+echo   作用：把源码编译成 winmm.dll（32 位和 64 位各一份）与安装器 EXE，
 echo         并检查导出函数是否完整，确认代码改动没有把工程改坏。
 echo ============================================================
 echo.
@@ -21,14 +21,21 @@ if not exist "%MSBUILD%" (
 
 set "BUILD_FAIL=0"
 
-echo [1/3] 编译 64 位 Release ...
+echo [1/4] 编译 64 位 Release ...
 "%MSBUILD%" "%ROOT%\CTFontHook.sln" /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /t:Build
 if errorlevel 1 (echo      失败 & set "BUILD_FAIL=1") else (echo      通过)
 echo.
 
 if "%BUILD_FAIL%"=="0" (
-    echo [2/3] 编译 32 位 Release ...
+    echo [2/4] 编译 32 位 Release ...
     "%MSBUILD%" "%ROOT%\CTFontHook.sln" /nologo /v:minimal /p:Configuration=Release /p:Platform=Win32 /t:Build
+    if errorlevel 1 (echo      失败 & set "BUILD_FAIL=1") else (echo      通过)
+    echo.
+)
+
+if "%BUILD_FAIL%"=="0" (
+    echo [3/4] 编译安装器 Release ...
+    "%MSBUILD%" "%ROOT%\installer\CTFontHookInstaller.vcxproj" /nologo /v:minimal /p:Configuration=Release /p:Platform=Win32 /t:Build
     if errorlevel 1 (echo      失败 & set "BUILD_FAIL=1") else (echo      通过)
     echo.
 )
@@ -43,13 +50,15 @@ if "%BUILD_FAIL%"=="1" (
     exit /b 1
 )
 
-echo [3/3] 检查产物并校验导出函数 ...
+echo [4/4] 检查产物并校验导出函数 ...
 set "DLL32=%ROOT%\Release\winmm.dll"
 set "DLL64=%ROOT%\x64\Release\winmm.dll"
+set "SETUP=%ROOT%\installer\bin\Win32\Release\CTFontHook-Setup.exe"
 set "CHECK_FAIL=0"
 
 if exist "%DLL64%" (echo      通过 : x64\Release\winmm.dll) else (echo      失败 : 缺少 x64\Release\winmm.dll & set "CHECK_FAIL=1")
 if exist "%DLL32%" (echo      通过 : Release\winmm.dll) else (echo      失败 : 缺少 Release\winmm.dll & set "CHECK_FAIL=1")
+if exist "%SETUP%" (echo      通过 : installer\bin\Win32\Release\CTFontHook-Setup.exe) else (echo      失败 : 缺少 installer\bin\Win32\Release\CTFontHook-Setup.exe & set "CHECK_FAIL=1")
 
 if "%CHECK_FAIL%"=="0" (
     if exist "%DUMPBIN%" (
@@ -68,6 +77,7 @@ if "%CHECK_FAIL%"=="0" (
     echo 结论：测试通过！DLL 已生成，并且导出函数完整。
     echo        32 位产物 : %DLL32%
     echo        64 位产物 : %DLL64%
+    echo        安装器    : %SETUP%
     echo ============================================================
 ) else (
     echo ============================================================

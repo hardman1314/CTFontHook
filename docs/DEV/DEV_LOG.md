@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-10-11　部署自动化（三）：一键脚本接入安装器 + 忽略产物
+
+- **任务**：把独立安装器接入两个一键脚本，并让构建产物不进版本库。
+- **改动文件**：
+  - `scripts/1-一键测试.bat`：新增 `[3/4] 编译安装器 Release`；`[4/4]` 增加对
+    `installer\bin\Win32\Release\CTFontHook-Setup.exe` 的存在校验；总步骤名 3/3 → 4/4。
+  - `scripts/2-一键打包.bat`：新增 `[3/5] 编译安装器`；把 `CTFontHook-Setup.exe` 复制进包根目录；
+    重写生成的《使用说明.txt》（首推「双击安装器」，手工步骤降级为附录）；总步骤名 4/4 → 5/5。
+  - `.gitignore`：新增 `/installer/bin/`、`/installer/obj/`。
+- **做法**：脚本以 UTF-8 编辑 → 运行 `scripts\tools\to_gbk.ps1` 转回 GBK + CRLF。
+- **验证**（实测）：
+  - `scripts\1-一键测试.bat`：`[1/4]`~`[4/4]` 全通过，控制台显示三份产物均「通过」。
+  - `scripts\2-一键打包.bat`：产出 zip，内含 `CTFontHook-Setup.exe`（116736 B）、`32bit\winmm.dll`、
+    `64bit\winmm.dll`、`版本.txt`、`使用说明.txt`；`使用说明.txt` 以 GBK 解码正确无乱码。
+  - `git check-ignore` 确认 `installer/bin`、`installer/obj` 已被忽略，仅源码三个文件入库。
+- **遗留**：安装器与脚本均未做真机安装闭环验证。
+
+---
+
+## 2026-10-11　部署自动化（二）：独立 GUI 安装器工程
+
+- **任务**：把「判断架构 / 备份 / 复制 / 还原」四步手工流程，做成一个双击即用的安装器。
+- **改动文件**（新增，纯新模块，未触碰既有源码）：
+  - `installer/CTFontHookInstaller.vcxproj`（应用工程，v143 / Unicode / `/utf-8`；产物 `CTFontHook-Setup.exe`；UAC `requireAdministrator`）。
+  - `installer/main.cpp`（Win32 GUI：`ReadPeMachine` 判架构、`DoInstall` / `DoUninstall`、`.CTFontHook` 备份与 `manifest.ini`）。
+  - `installer/resource.h`（控件 ID）。
+- **做法**：解析目标 EXE 的 PE 头 `IMAGE_FILE_HEADER.Machine`（`0x014C`/`0x8664`）自动选 DLL；
+  备份与安装记录集中在 `<游戏目录>\.CTFontHook\`，卸载据 `manifest.ini` 还原。
+- **验证**（实测）：
+  - 构建出 `installer\bin\Win32\Release\CTFontHook-Setup.exe`（32 位、含 `requireAdministrator`）。
+  - 用临时探针校验架构判定：`System32\notepad.exe`→64 位、`SysWOW64\notepad.exe`→32 位、
+    本项目两种 `winmm.dll` 各自匹配，全部正确。
+- **决策**：形态（独立 GUI EXE）与范围（仅装 / 卸）经用户确认，记入 ADR-0005。
+
+---
+
+## 2026-10-11　体验优化：P0-1「应用此字体」按钮 + P0-2 热键兜底
+
+- **任务**：解决 `USER_FLOW.md` 两条 P0 痛点（用户已批准方案：P0-1=方案 B，P0-2=方案 A）。
+- **改动文件**：
+  - P0-1（方案 B）：`state/font_picker_layout_geometry.cppinc:60`（新增按钮矩形）、
+    `state/font_picker_state.cppinc:280`（悬停状态）、
+    `paint/font_picker_paint_preview.cppinc:97`（用按钮替换原键盘提示）、
+    `input/font_picker_wndproc.cppinc:123`、`:513`、`:545`、`:600` 等（点击 / 悬停 / 离开）。
+  - P0-2（方案 A）：`state/font_picker_window_animation.cppinc:106`、`:110`（无热键时隐藏→最小化）、
+    `paint/font_picker_paint_title.cppinc:61`（标题提示「无热键·关闭=最小化」+ 警示色）。
+- **做法**：P0-1 保留「单击=选中」，新增显式按钮；P0-2 在 `HidePickerWindowAnimated` 入口加守卫，
+  无热键则改走既有 `MinimizePickerWindowNative`（窗口有 `WS_EX_APPWINDOW`，任务栏可重开）。
+- **验证**：`scripts\1-一键测试.bat` 32/64 位编译通过、导出表校验通过。
+- **遗留**：未做真机交互验证（按钮手感 / 「三热键全占用」场景）。详见 `docs/DEV/features/` 两份档案。
+
+---
+
 ## 2026-10-11　阶段 1 梳理：用户全流程现状图 + 痛点清单
 
 - **任务**：只读梳理「普通玩家从装 DLL 到字体生效」的完整链路，产出痛点清单，为体验重构定优先级。

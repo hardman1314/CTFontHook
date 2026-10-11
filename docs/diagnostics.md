@@ -1,0 +1,202 @@
+# 诊断与问题定位
+
+## KRKR：启动时缺少 mapPrerenderedFont 成员
+
+截图中的 `first.ks:14` / `mappfont` / `Member 'mapPrerenderedFont' does not exist`
+与所提供脚本第 14 行直接执行 `[mappfont storage=MPLUS1C12.tft]` 相符。代码检查发现
+旧适配器在安装时将主映像中的 `mapPrerenderedFont` 改成内部名称，直接调用该成员的
+脚本因而不能假定会进入异常回退；子串扫描还会命中 `unmapPrerenderedFont`。
+隐藏 TFT 也可能把问题变为字体资源加载异常。
+
+当前适配器保留成员名与文件可见性，在插件 `V2Link` 传入官方 exporter 时绑定
+Font 原生方法，对有效 map 调用转交同实例 unmap。所需接口缺失时透传，不使用
+错误弹窗作为切换字体渲染路径的机制。边界与开关语义见
+[KRKR 模块文档](../SimpleFontHook/hooks/internal/engines/krkr/README.md)。
+
+首次修改仅通过离线接口夹具；该夹具原先只模拟 `stdcall` 虚接口，未覆盖目标
+游戏实际使用的 `cdecl`。后续实际运行证据与修复如下。
+
+## KRKR：TVP 虚接口调用约定导致启动快失败
+
+实际运行 `hfeti_risa_crack.exe` 时，旧 DLL 以 `0xC0000409` 退出，Windows
+Application Error 记录 `WINMM.dll+0x5f305`。调试器捕获的第二次机会异常参数 2
+对应安全 cookie 检查失败，PDB 栈定位到 `KrkrBindFontMethods`，不是脚本弹窗。
+
+目标 EXE 的 `QueryFunctionsByNarrowString`（RVA `0x44700`）使用四个显式栈参数、
+以普通 `ret` 返回；引用计数调用点也由调用者清栈。TVP 导出的 Variant 构造辅助函数
+却以 `ret 4` 返回。因此不能将虚接口和导出辅助函数统一声明为同一种约定。
+当前 x86 桥接在首次查询时保存并恢复 ESP，根据实际清栈量选择 `cdecl` / `stdcall`
+虚接口入口；所有 TVP 导出辅助函数仍保持 `stdcall`。安全 cookie 检查保持开启。
+
+运行验证已备份游戏原 `winmm.dll`，再部署独立输出目录内编译的 Win32 修复版。
+新进程日志记录 `native-font-dispatch install=1 status=0 interface=cdecl`，进程保持
+响应，窗口实际显示房间背景和日文对话，未再停在启动崩溃。未改写游戏 EXE 或脚本，
+未由代理更改字体配置。此结论限定为此次启动和已观察到的对话画面，不代表全流程验证。
+原始 DLL、调用约定反汇编、调试转储及执行记录位于 `artifacts/krkr-compat/runtime/`；
+同一事务的四个交付角色及离线回归记录仍位于 `artifacts/krkr-compat/`。
+
+## 日志文件
+
+运行日志写入目标程序目录中的 `FontHook.trace.log`。每个进程会话第一次写入时重建
+该文件，日志行包含时间、PID、TID 和模块标签。
+
+基础安装、配置和引擎探测日志始终可能出现。详细 API 采样、异常记录和卡顿监视由
+`EnableDebugLog` 控制。
+
+## 用于复现的临时调试配置
+
+```ini
+[FontHook]
+EnableDebugLog=1
+DebugSlowMs=50
+DebugTraceSampleLimit=128
+DebugPickerThreadLogLimit=32
+```
+
+只在复现问题期间启用。完成定位后恢复：
+
+```ini
+EnableDebugLog=0
+DebugTraceSampleLimit=0
+DebugPickerThreadLogLimit=0
+```
+
+## 结构化字段
+
+每条真实日志的固定前缀为本地时间、PID 和 TID；消息体包含模块标签。部分适配器消息在
+标签后使用 `key=value` 片段，其他消息使用固定文本。下表是整理证据时使用的归一化字段，
+不表示每条 `FontHook.trace.log` 都包含全部字段：
+
+| 字段 | 来源 | 判定用途 |
+| --- | --- | --- |
+| `module` | 消息体中的适配器或通用钩子标签 | 确认处理边界 |
+| `phase` | 根据固定消息映射为 `identity`、`capability`、`route`、`render` 等阶段 | 区分决策层次 |
+| `decision` | 根据消息结果归一化为 `pass`、`skip`、`fallback`、`error` | 确认分支结果 |
+| `evidence` | 标记、导出、资源布局或运行时接口摘要 | 回溯身份/能力依据 |
+| `configVersion` | `Config::ConfigVersion` | 关联配置快照和缓存 |
+| `request` / `route` | 原始请求与规范化/虚拟路径 | 检查分发结果 |
+| `fallback` | 回退原因或 `none` | 区分能力缺失与资源缺失 |
+| `duration_us` | 调用计时器，或由 `scan-ms` 等原字段换算 | 定位高频路径耗时 |
+
+同一复现记录中，日志、配置和样本哈希必须使用同一进程架构。缺少字段时标记为“待确认”，
+不以最终画面单独推断分支。
+
+## 日志标签
+
+| 标签 | 含义 |
+| --- | --- |
+| `[TRACE]` | 安装、配置版本和 API 采样 |
+| `[DEBUG][TextSub]` | 文字映射输入和输出 |
+| `[DEBUG][BGI]` | BGI 身份、DSC/LINE 字体脚本、GDI 缓存和度量适配 |
+| `[DEBUG][CatSystem2]` | classic CatSystem2 字体源、文件重定向和缺失目录枚举回退 |
+| `[DEBUG][UnityMono]` | Unity Mono 运行时绑定和对象应用 |
+| `[DEBUG][CatSystemUnity]` | Unity IL2CPP/TMP 运行时适配 |
+| `[RenPy]` | 字体源解析、Python 虚拟文件回调和缓存刷新 |
+| `[Tyrano]` | ASAR 检测、Web 字体重定向和桥接 |
+| `[Yuris]` | YPF 目录编码探测、兼容页表、图集替换和覆盖值回退 |
+| `[DIAG][crash]` | 首次机会异常的有限采样 |
+| `[DIAG][hang-watchdog]` | 长时间阶段和窗口无响应探测 |
+
+## 定位流程
+
+1. 使用关闭所有可选兼容功能的配置确认基础加载是否正常。
+2. 只启用字体名称替换，区分字体问题与编码、度量或引擎缓存问题。
+3. 分别启用字符集伪装、代码页重定向和文字映射，不同时改变多个变量。
+4. 查看进程启动阶段的引擎探测结果，确认没有误判。
+5. 对照首次错误输出前后的 API 样本，而不是只分析最终截图。
+6. 记录目标程序架构、DLL SHA-256、配置文件和最短复现步骤。
+
+### 证据复刻步骤
+
+1. 复制样本到隔离目录，使用 `Get-FileHash -Algorithm SHA256` 保存所有输入哈希。
+2. 使用关闭目标适配器的配置启动一次，保存基线日志和截图。
+3. 每次只改变一个配置组，记录 `ConfigVersion`、适配器日志和结果哈希。
+4. 使用正向、相似但非目标、能力缺失和边界样本验证身份、能力、路由三个阶段。
+5. 将命令、配置、日志和产物路径写入 [功能证据与复刻流程](reproduction.md) 的记录模板。
+
+## 常见问题
+
+### 换字体后文字变成错误汉字
+
+先确认是否错误启用了代码页重定向或文字映射。字体替换本身不应改变文本字节流。
+查看原始字体请求检测到的字符集，以及 `[DEBUG][TextSub]` 中实际解码后的 Unicode。
+
+### 字体切换后没有变化
+
+检查 `ConfigVersion` 是否更新、目标引擎是否使用内部缓存，以及对应适配器是否记录了
+缓存清理或资源重建。不要直接把问题归因于字体名称替换失败。
+
+### 繁简映射开启后回想文本断行异常
+
+仅使用 ANSI GDI 绘制的程序可能用 `GetTextExtentExPointA` 返回值推进原始 DBCS
+字节缓冲区。文字映射路径可以把测量暂时转到宽字符 API，但必须把 `lpnFit` 和
+`lpnDx` 转回源字节边界；否则返回的 UTF-16 字符数会让调用方从半个汉字或过早位置
+继续排版。检查 `[DEBUG][TextSub]` 的解码结果时，同时确认度量钩子保留了 ANSI 字节
+计数，不能只看屏幕上的简体字是否正确。
+
+### TyranoScript 换字体后场景或插件提示 file not found
+
+先确认 `resources/app.asar` 与 `resources/app` 的实际布局。已经从 `app.asar` 启动的
+Electron 进程必须在字体热切换后继续看到同一归档；否则后续 `./data/scenario/...` 和
+`./data/scenario/../others/plugin/...` 请求会落到不存在或不完整的 loose 根。开启
+`EnableDebugLog` 后检查 `[DEBUG][Tyrano]` 的 `asar-visible`、`asar-index-ready` 和
+`asar-overlay-open`，并确认规范化后的条目仍位于应用根内。
+
+### 启动卡顿
+
+检查日志中的慢调用和 watchdog 阶段。重点排查高频钩子中的重复文件扫描、PE/ASAR
+解析、字体源或资源生成、运行时类型查找和无界日志。
+
+### 仅某个引擎异常
+
+先确认引擎检测证据，再临时关闭该引擎总开关进行对照。通用 GDI 导入不能作为具体
+引擎身份的充分证据。
+
+### BGI LINE 界面仍使用固定字体
+
+先查启动日志中的 `phase=line-font-capability`。`decision=attached` 表示当前 x86/x64
+DSC 解码器 profile 唯一并已挂接；`decision=skip` 时根据 `evidence` 判断是缺少 DSC、
+解码器布局未知还是匹配不唯一，适配器会保留原脚本。
+
+进入 LINE 界面后还必须出现 `phase=line-font-apply decision=patched`。其中 `evidence`
+应为已验证的 `bp-modern-font-record-0c00` 或 `bp-legacy-font-record-0bd4`，`size` 和
+`offset` 用于对应本次内存输出。只有 capability 而没有 apply，表示解码器钩子可用但当前
+BP 没有唯一命中已知 LINE 语义布局，不要改用固定 RVA 或只搜索字体名。
+
+该路径直接处理 `sysprg.arc` 解码后的内存缓冲区。目标目录没有解包后的 `scrdrv._bp` 是
+正常状态；放置同名松散文件不会启用功能，也不能用于判断路由是否成功。
+
+### YU-RIS 页表布局不兼容
+
+先看 `atlas encoding resolved` 的 `layout`、`auto-codepage` 和兼容代码页数量，再确认
+`YurisAtlasCodepage`。出现 `atlas-codepage override incompatible` 表示指定代码页不能
+装入当前固定页数和槽位；例如 CP932 的 45×188 图集不能承载 GBK 的 127×192 页表。
+这时需要提供与目标代码页匹配的字体资源布局，而不是改 `ForcedCharset`、转码或文字映射选项。
+也不要用 EXE 中单个 `push 932` 或 `MultiByteToWideChar` 导入判断页表；现有 CP932、GBK
+和 Big5 样本都保留同一套 CRT 转换代码，该证据不能区分实际字体槽位。
+
+### YU-RIS 标点偏移或出现碎点
+
+先区分资源的“槽步长”“实际字框”和“文字绘制原点”。WebP `gbk-s38` 使用
+816x624 画布、16x12 槽、48 px 步长和 38x38 字框。运行时 GDI 的首槽绘制原点由槽起点
+`(5,11)` 和绘制偏移 `(5,4)` 合成 `(10,15)`，用于保留参考 Pillow 图集约 6 px 的槽顶透明区；不能把黑框强制居中，也不能套用 Relirium 的贴左、
+贴底坐标。Relirium 与 Big5 也不能共用同一组偏移：Relirium/YDG 才使用统一的左下偏移
+和底部省略号；Big5 的 `、。`、全宽问叹号、成对括号、小型形式符号与居中省略号分别
+按 PNG 图集的 bearing 类别定位。所有配置均按单槽裁剪，并在字体缺字时使用同类符号或
+代码页回退字体，
+避免相邻槽串图和 `.notdef` 碎片。
+
+## 日志提交内容
+
+提供问题材料时包含：目标程序架构、复现步骤、`FontHook.ini`、对应构建哈希、完整的
+单次 `FontHook.trace.log` 和错误画面。删除与问题无关的重复日志，避免混合不同配置
+版本的记录。
+
+## 证据判定
+
+| 结果 | 允许的结论 |
+| --- | --- |
+| 身份日志 `decision=pass`，能力日志 `decision=pass` | 可以检查专用资源路由 |
+| 身份通过，能力 `fallback` | 适配器保持通用路径，记录回退原因 |
+| 身份 `skip` | 不检查引擎专用资源，不修改导入、缓存或文本 |
+| 只有最终截图变化 | 结果可见，但分支来源待确认 |

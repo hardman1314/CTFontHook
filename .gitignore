@@ -1,0 +1,39 @@
+# ============================================================
+# CTFontHook 版本控制忽略规则
+# 原则：只跟踪「源码 + 文档 + 配置」，排除构建产物、临时目录与工具缓存。
+# ============================================================
+
+# 构建产物（输出目录）
+/Release/
+/Debug/
+/Win32/
+/x64/
+/src/Release/
+/src/Debug/
+/src/Win32/
+/src/x64/
+
+# 构建中间文件
+*.obj
+*.tlog
+*.iobj
+*.ipdb
+*.pdb
+*.exp
+*.recipe
+*.lastbuildstate
+*.user
+
+# 临时与分发目录
+/.tmp/
+/dist/
+/backups/
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 编辑器
+.vs/
+.vscode/

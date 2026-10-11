@@ -1,0 +1,160 @@
+# 编译与发布
+
+## 环境
+
+- Visual Studio 2022
+- MSVC v143 C++ 工具集
+- Windows 10 SDK
+- 仓库根目录中的 `detours.h`、`detours.lib` 和 `detours_x64.lib`
+
+解决方案包含 Debug/Release 与 Win32/x64 四组配置，最终 DLL 名固定为 `winmm.dll`。
+
+## 编译命令
+
+一次构建并压缩 Win32 与 x64 Release：
+
+```bat
+build_release.bat
+```
+
+只构建一个架构时使用：
+
+```bat
+build_x32.bat
+build_x64.bat
+```
+
+两个 Release 配置的 Post-Build Event 会在编译成功后自动压缩并校验标准输出目录中的
+`winmm.dll`，因此从 Visual Studio、MSBuild 或仓库脚本构建的行为一致。
+脚本默认执行增量 `Build`，保留 Release LTCG 生成的 IPDB/IOBJ。需要清理全部中间产物时，
+显式使用全量入口：
+
+```bat
+build_release.bat rebuild
+build_x32.bat rebuild
+build_x64.bat rebuild
+```
+
+也可以在 Visual Studio Developer Command Prompt 中执行：
+
+```bat
+msbuild SimpleFontHook.sln /t:Build /p:Configuration=Release /p:Platform=Win32 /v:minimal
+msbuild SimpleFontHook.sln /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+```
+
+`Rebuild` 会先删除 IPDB/IOBJ，因此全量入口可能输出
+`Previous IPDB not found, fall back to full compilation.`。这是清理后的预期链接过程；日常
+编译使用默认 `Build`，链接器即可复用上一轮的 LTCG 状态。
+
+## 产物
+
+| 架构 | DLL | 调试符号 |
+| --- | --- | --- |
+| Win32 | `Release/winmm.dll` | `Release/winmm.pdb` |
+| x64 | `x64/Release/winmm.dll` | `x64/Release/winmm.pdb` |
+
+部署时只需要匹配架构的 DLL。PDB 用于定位崩溃地址，不应替代对应构建的源码和配置记录。
+
+## 可复现构建记录
+
+每个可交付构建使用独立目录保存以下字段：
+
+| 字段 | 示例/来源 |
+| --- | --- |
+| 源码标识 | 工作区路径、提交标识或压缩包 SHA-256 |
+| 工具链 | Visual Studio 版本、MSVC 版本、Windows SDK 版本 |
+| 配置 | `Release` + `Win32` 或 `Release` + `x64` |
+| 命令 | 实际执行的脚本或 `msbuild` 命令 |
+| 产物哈希 | DLL、PDB 的 SHA-256 |
+| 导出快照 | `dumpbin /nologo /exports` 输出 |
+| 配置快照 | 随 DLL 使用的 `FontHook.ini` |
+
+PowerShell 记录示例：
+
+```powershell
+New-Item -ItemType Directory -Force artifacts | Out-Null
+Get-FileHash -Algorithm SHA256 -LiteralPath @(
+  'Release\winmm.dll', 'x64\Release\winmm.dll',
+  'Release\winmm.pdb', 'x64\Release\winmm.pdb'
+) |
+  Tee-Object artifacts\build-sha256.txt
+```
+
+构建脚本的 `Build` 与 `Rebuild` 选择、导出表和体积记录分别保存，避免将不同架构或不同
+配置的产物放入同一证据目录。
+
+## Release 优化
+
+项目的 Release 配置保持以下体积优化：
+
+- 全程序优化和函数级链接。
+- `/Os` 体积优先、`/Gw` 全局数据优化和字符串池。
+- 关闭 RTTI。
+- Release 关闭 C++ 异常展开并定义 `_HAS_EXCEPTIONS=0`；Debug 保留工具链默认行为。
+- `/OPT:REF` 删除未引用符号。
+- `/OPT:ICF` 折叠相同 COMDAT。
+- 增量 LTCG 在普通 `Build` 中复用 IPDB/IOBJ，全量 `Rebuild` 用于主动清理中间状态。
+
+DLL 的导出、Win32 hook 和引擎回调不允许传播 C++ 异常。Release 代码使用返回值、边界检查
+和现有 SEH 路径报告失败；新增代码不得依赖 `throw`/`catch` 或异常展开执行清理。需要验证
+C++ 异常行为的诊断代码应放在 Debug 配置，不得改变 Release 的正常成功路径。
+
+引入第三方库、大型静态映射、模板实例或调试字符串时，分别记录 Win32 和 x64 DLL
+体积变化。不要为了缩小 DLL 删除必要的错误处理、边界检查或代理导出。
+
+## 代理导出检查
+
+`winmm.dll` 同时承担系统 DLL 代理职责。发布前使用 `dumpbin` 检查导出：
+
+```bat
+dumpbin /nologo /exports Release\winmm.dll
+dumpbin /nologo /exports x64\Release\winmm.dll
+```
+
+比较修改前后的导出名称、序号和转发目标。普通字体功能修改不应改变代理导出表。
+
+## Release 自动压缩
+
+Release 的 Post-Build Event 自动使用 `tools/upx/upx.exe` 中固定的 UPX 版本压缩最终 DLL，
+无需额外安装或传入路径。需要跳过编译、手动压缩已有 DLL 时执行：
+
+```bat
+pack_release.bat Win32
+pack_release.bat x64
+pack_release.bat all
+```
+
+如需临时覆盖内置版本，可把自定义 `upx.exe` 路径作为第二个参数；也可以通过 `UPX_PATH`
+环境变量或 `PATH` 提供。脚本使用
+`--best --lzma` 压缩临时副本，执行 `upx -t` 完整性检查后才写入：
+
+| 架构 | 压缩后的标准 DLL |
+| --- | --- |
+| Win32 | `Release/winmm.dll` |
+| x64 | `x64/Release/winmm.dll` |
+
+脚本先处理临时副本，UPX 完整性检查通过后才覆盖标准 DLL；再次执行时会识别并验证已经
+压缩的 DLL，不会重复压缩。压缩只减少磁盘和分发体积，不减少解压后的内存映像，也不删除
+任何引擎适配。需要使用 Release PDB 调试时，先执行 `tools\upx\upx.exe -d winmm.dll`，或设置
+`SIMPLEFONTHOOK_SKIP_PACK=1` 后重新构建。某些安全产品或企业策略会拒绝加载加壳 DLL；
+这种环境应使用跳过压缩的构建，不修改或绕过系统安全策略。
+
+如需签名，应在压缩完成后对最终发布副本签名；压缩已签名文件会使原签名失效。
+
+## 发布检查清单
+
+1. Win32 与 x64 Release 均编译成功。
+2. 构建日志没有编译或链接错误。
+3. 代理导出名称与序号保持兼容。
+4. 记录两个 DLL 的文件大小和 SHA-256。
+5. 默认配置关闭详细调试日志和高频采样。
+6. 代码修改对应的 README、配置说明和架构说明已经同步。
+7. 部署前备份目标目录中已有的 `winmm.dll` 和 `FontHook.ini`。
+8. 只把匹配目标进程架构的 DLL 放入目标目录。
+9. 对需要复刻的引擎样本，按 [功能证据与复刻流程](reproduction.md) 保存样本哈希、配置、
+   日志和正负验证结果。
+
+## 回滚
+
+回滚时先退出目标程序，再恢复原 `winmm.dll` 和 `FontHook.ini`。不要在进程已加载 DLL
+时覆盖文件，也不要混用不同构建的 DLL、PDB 和配置快照。

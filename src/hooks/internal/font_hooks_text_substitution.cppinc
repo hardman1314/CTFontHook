@@ -1,0 +1,397 @@
+#include "font_hooks_text_substitution_map.cppinc"
+
+static volatile LONG g_textSubstitutionTraceCount = 0;
+static volatile LONG g_textSubstitutionGlyphTraceCount = 0;
+static volatile LONG g_textSubstitutionDecodeTraceCount = 0;
+
+struct TextSubstitutionTable {
+    const TextSubstitutionPair* pairs;
+    size_t count;
+    const char* name;
+};
+
+static const TextSubstitutionTable g_textSubstitutionTables[] = {
+    { g_jpTraditionalTextSubstitutions,
+      sizeof(g_jpTraditionalTextSubstitutions) / sizeof(g_jpTraditionalTextSubstitutions[0]),
+      "jp-traditional" },
+    { g_traditionalToSimplifiedTextSubstitutions,
+      sizeof(g_traditionalToSimplifiedTextSubstitutions) / sizeof(g_traditionalToSimplifiedTextSubstitutions[0]),
+      "traditional-to-simplified" },
+    { g_simplifiedToTraditionalTextSubstitutions,
+      sizeof(g_simplifiedToTraditionalTextSubstitutions) / sizeof(g_simplifiedToTraditionalTextSubstitutions[0]),
+      "simplified-to-traditional" },
+};
+
+static bool IsTextSubstitutionActive() {
+    return Config::EnableTextSubstitution && !IsPickerThread();
+}
+
+static const TextSubstitutionTable& ActiveTextSubstitutionTable() {
+    int mode = Config::TextSubstitutionMode;
+    if (mode < Config::TextSubstitutionModeJapaneseTraditional ||
+        mode > Config::TextSubstitutionModeSimplifiedToTraditional) {
+        mode = Config::TextSubstitutionModeJapaneseTraditional;
+    }
+    return g_textSubstitutionTables[mode];
+}
+
+static bool LookupTextSubstitution(const TextSubstitutionTable& table, wchar_t ch, wchar_t* replacement) {
+    if (!table.pairs || table.count == 0 || ch < table.pairs[0].from ||
+        ch > table.pairs[table.count - 1].from) {
+        return false;
+    }
+
+    size_t lo = 0;
+    size_t hi = table.count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        wchar_t from = table.pairs[mid].from;
+        if (from < ch) {
+            lo = mid + 1;
+        } else if (from > ch) {
+            hi = mid;
+        } else {
+            if (replacement) *replacement = table.pairs[mid].to;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool HasKnownNonTextExtension(LPCWSTR text, int length) {
+    static const wchar_t* const extensions[] = {
+        L".ttf", L".otf", L".ttc", L".otc", L".fon",
+        L".xml", L".ini", L".json", L".dll", L".exe",
+        L".int", L".kcs", L".dat", L".arc", L".bin",
+        L".png", L".jpg", L".jpeg", L".bmp", L".gif",
+        L".ogg", L".wav", L".mp3", L".mp4", L".webm",
+        L".html", L".htm", L".js", L".css", L".csv",
+    };
+    if (!text || length <= 0) return false;
+    for (const wchar_t* extension : extensions) {
+        int extensionLength = static_cast<int>(wcslen(extension));
+        if (length >= extensionLength &&
+            _wcsnicmp(text + length - extensionLength, extension,
+                extensionLength) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool LooksLikeNonDisplayDecodedText(LPCWSTR text, int length) {
+    if (!text || length <= 0) return true;
+    if (HasKnownNonTextExtension(text, length)) return true;
+
+    for (int i = 0; i < length; ++i) {
+        wchar_t ch = text[i];
+        if (ch == L'\\' || ch == L'/') return true;
+        if (ch == L'\0') return true;
+        if (ch < 0x20 && ch != L'\r' && ch != L'\n' && ch != L'\t')
+            return true;
+    }
+    return false;
+}
+
+static bool SubstituteDecodedTextInPlace(LPWSTR text, int count) {
+    if (!IsTextSubstitutionActive() || !text || count <= 0) return false;
+
+    int length = count;
+    if (length > 0 && text[length - 1] == L'\0') --length;
+    if (length <= 0 || LooksLikeNonDisplayDecodedText(text, length))
+        return false;
+
+    const TextSubstitutionTable& table = ActiveTextSubstitutionTable();
+    int changed = 0;
+    for (int i = 0; i < length; ++i) {
+        wchar_t replacement = 0;
+        if (LookupTextSubstitution(table, text[i], &replacement)) {
+            text[i] = replacement;
+            ++changed;
+        }
+    }
+    if (changed == 0) return false;
+
+    if (Config::EnableDebugLog) {
+        LONG hit = InterlockedIncrement(&g_textSubstitutionDecodeTraceCount);
+        if (hit <= 48) {
+            Utils::Trace("[DEBUG][TextSub] substituted decoded mode=%s count=%d changed=%d",
+                table.name, length, changed);
+        }
+    }
+    return true;
+}
+
+static UINT TextSubstitutionAnsiCodepage() {
+    if (g_CharsetDetected) {
+        switch (Config::DetectedCharset) {
+        case SHIFTJIS_CHARSET: return 932;
+        case HANGUL_CHARSET: return 949;
+        case JOHAB_CHARSET: return 1361;
+        case GB2312_CHARSET: return 936;
+        case CHINESEBIG5_CHARSET: return 950;
+        default: break;
+        }
+    }
+    return Config::TextSubstitutionCodepage;
+}
+
+static bool BuildAnsiWideByteOffsets(UINT codepage, LPCSTR input, int sourceLength,
+    const std::wstring& decoded, std::vector<int>& offsets) {
+    offsets.clear();
+    if (!input || sourceLength < 0 || decoded.empty()) return false;
+
+    offsets.reserve(decoded.size() + 1);
+    int byteOffset = 0;
+    size_t wideOffset = 0;
+    const int kMaxProbeBytes = 8;
+
+    // Decode one source character at a time so callers of an A API can keep
+    // using byte offsets even though the measurement is performed by a W API.
+    while (byteOffset < sourceLength && wideOffset < decoded.size()) {
+        int consumed = 0;
+        int produced = 0;
+        int maxProbe = std::min(kMaxProbeBytes, sourceLength - byteOffset);
+        for (int probeBytes = 1; probeBytes <= maxProbe; ++probeBytes) {
+            wchar_t probe[8] = {};
+            int probeLength = orgMultiByteToWideChar(
+                codepage, 0, input + byteOffset, probeBytes,
+                probe, _countof(probe));
+            if (probeLength <= 0 || wideOffset + (size_t)probeLength > decoded.size())
+                continue;
+            if (std::char_traits<wchar_t>::compare(
+                probe, decoded.data() + wideOffset, probeLength) != 0) {
+                continue;
+            }
+            consumed = probeBytes;
+            produced = probeLength;
+            break;
+        }
+
+        if (consumed == 0) {
+            // Keep the mapping monotonic for malformed or stateful byte
+            // sequences; the normal CP932/936/950 paths never use this.
+            consumed = 1;
+            produced = 1;
+            if (wideOffset + (size_t)produced > decoded.size()) break;
+        }
+
+        for (int i = 0; i < produced; ++i) offsets.push_back(byteOffset);
+        byteOffset += consumed;
+        wideOffset += (size_t)produced;
+    }
+
+    if (wideOffset < decoded.size()) {
+        // A decoder may collapse an invalid tail differently when queried in
+        // small chunks. Associate any remaining UTF-16 units with the tail.
+        while (wideOffset < decoded.size()) {
+            offsets.push_back(std::min(byteOffset, sourceLength));
+            ++wideOffset;
+        }
+    }
+
+    if (offsets.size() != decoded.size()) {
+        offsets.clear();
+        return false;
+    }
+    offsets.push_back(sourceLength);
+    return true;
+}
+
+static bool DecodeTextAToWide(UINT codepage, LPCSTR input, int count, std::wstring& output,
+    int* outputCount, std::vector<int>* sourceByteOffsets = NULL) {
+    if (sourceByteOffsets) sourceByteOffsets->clear();
+    if (outputCount) *outputCount = count;
+    if (!input) return false;
+
+    int sourceLen = count < 0 ? lstrlenA(input) : count;
+    if (sourceLen <= 0) return false;
+
+    DecodedTextSubstitutionBypassScope bypassScope;
+    int wideLen = MultiByteToWideChar(codepage, 0, input, sourceLen, NULL, 0);
+    if (wideLen <= 0) return false;
+
+    output.assign(wideLen, L'\0');
+    if (MultiByteToWideChar(codepage, 0, input, sourceLen, &output[0], wideLen) != wideLen) {
+        output.clear();
+        return false;
+    }
+    if (sourceByteOffsets) {
+        UINT boundaryCodepage = codepage;
+        // DecodeTextAToWide goes through the conversion hook, so account for
+        // an active codepage redirect when reconstructing source byte spans.
+        ResolveRedirectCodepage(codepage, &boundaryCodepage);
+        if (!BuildAnsiWideByteOffsets(
+            boundaryCodepage, input, sourceLen, output, *sourceByteOffsets)) {
+            sourceByteOffsets->clear();
+        }
+    }
+    if (outputCount) *outputCount = count < 0 ? -1 : wideLen;
+    return true;
+}
+
+static bool SubstituteTextW(LPCWSTR input, int count, std::wstring& output, int* outputCount) {
+    if (outputCount) *outputCount = count;
+    if (!IsTextSubstitutionActive() || !input) return false;
+    const TextSubstitutionTable& table = ActiveTextSubstitutionTable();
+    if (!table.pairs || table.count == 0) return false;
+
+    int length = count < 0 ? lstrlenW(input) : count;
+    if (length <= 0) return false;
+
+    int firstMatch = -1;
+    wchar_t firstReplacement = 0;
+    for (int i = 0; i < length; ++i) {
+        if (LookupTextSubstitution(table, input[i], &firstReplacement)) {
+            firstMatch = i;
+            break;
+        }
+    }
+    if (firstMatch < 0) {
+        output.clear();
+        return false;
+    }
+
+    output.assign(input, input + length);
+    output[(size_t)firstMatch] = firstReplacement;
+    for (int i = firstMatch + 1; i < length; ++i) {
+        wchar_t replacement = 0;
+        if (LookupTextSubstitution(table, output[(size_t)i], &replacement))
+            output[(size_t)i] = replacement;
+    }
+
+    if (outputCount) *outputCount = count < 0 ? -1 : length;
+    if (Config::EnableDebugLog) {
+        LONG hit = InterlockedIncrement(&g_textSubstitutionTraceCount);
+        if (hit <= 24) {
+            Utils::Trace("[DEBUG][TextSub] substituted wide mode=%s count=%d", table.name, length);
+        }
+    }
+    return true;
+}
+
+static bool SubstituteSingleTextCharW(wchar_t input, wchar_t* output) {
+    if (output) *output = input;
+    if (!IsTextSubstitutionActive()) return false;
+
+    wchar_t replacement = 0;
+    if (!LookupTextSubstitution(ActiveTextSubstitutionTable(), input, &replacement)) return false;
+    if (output) *output = replacement;
+
+    if (Config::EnableDebugLog) {
+        LONG hit = InterlockedIncrement(&g_textSubstitutionGlyphTraceCount);
+        if (hit <= 24) {
+            Utils::Trace("[DEBUG][TextSub] substituted glyph char U+%04X -> U+%04X",
+                (unsigned)input, (unsigned)replacement);
+        }
+    }
+    return true;
+}
+
+static bool DecodeSingleAnsiGlyphChar(UINT codepage, UINT input, wchar_t* output) {
+    if (output) *output = 0;
+    if (input > 0xFFFF) return false;
+
+    char bytes[2] = {};
+    int length = 0;
+    if (input <= 0xFF) {
+        bytes[0] = (char)(input & 0xFF);
+        length = 1;
+    } else {
+        bytes[0] = (char)((input >> 8) & 0xFF);
+        bytes[1] = (char)(input & 0xFF);
+        length = 2;
+    }
+
+    wchar_t decoded = 0;
+    int ret = orgMultiByteToWideChar(codepage, 0, bytes, length, &decoded, 1);
+    if (ret == 1) {
+        if (output) *output = decoded;
+        return true;
+    }
+
+    if (length == 2) {
+        char reversed[2] = { bytes[1], bytes[0] };
+        decoded = 0;
+        ret = orgMultiByteToWideChar(codepage, 0, reversed, 2, &decoded, 1);
+        if (ret == 1) {
+            if (output) *output = decoded;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool SubstituteSingleTextCharA(UINT input, wchar_t* output) {
+    if (output) *output = 0;
+    if (!IsTextSubstitutionActive()) return false;
+
+    wchar_t decoded = 0;
+    if (!DecodeSingleAnsiGlyphChar(TextSubstitutionAnsiCodepage(), input, &decoded)) return false;
+    return SubstituteSingleTextCharW(decoded, output);
+}
+
+static bool SubstituteTextAToWide(LPCSTR input, int count, std::wstring& output, int* outputCount,
+    std::vector<int>* sourceByteOffsets = NULL) {
+    if (sourceByteOffsets) sourceByteOffsets->clear();
+    if (outputCount) *outputCount = count;
+    if (!input) return false;
+
+    bool decodeMajiroCp932 = MajiroShouldDecodeAnsiTextAsCp932Wide();
+    UINT codepage = TextSubstitutionAnsiCodepage();
+    UINT redirectedCodepage = codepage;
+    bool decodeThroughCodepageRedirect = ResolveRedirectCodepage(codepage, &redirectedCodepage);
+    if (!IsTextSubstitutionActive()) {
+        if (decodeThroughCodepageRedirect)
+            return DecodeTextAToWide(codepage, input, count, output, outputCount, sourceByteOffsets);
+        return decodeMajiroCp932 &&
+            DecodeTextAToWide(932, input, count, output, outputCount, sourceByteOffsets);
+    }
+
+    std::wstring wideInput;
+    int wideLen = 0;
+    if (!DecodeTextAToWide(codepage, input, count, wideInput, &wideLen, sourceByteOffsets)) return false;
+
+    int wideOutputCount = 0;
+    if (!SubstituteTextW(wideInput.c_str(), wideLen, output, &wideOutputCount)) {
+        if (decodeThroughCodepageRedirect) {
+            output.swap(wideInput);
+            if (outputCount) *outputCount = count < 0 ? -1 : wideLen;
+            return true;
+        }
+        if (!decodeMajiroCp932) return false;
+        return DecodeTextAToWide(932, input, count, output, outputCount, sourceByteOffsets);
+    }
+    if (outputCount) *outputCount = count < 0 ? -1 : wideOutputCount;
+    return true;
+}
+
+static int MapWideFitToAnsiBytes(int wideFit, const std::vector<int>& sourceByteOffsets,
+    int sourceLength) {
+    if (sourceLength <= 0 || wideFit <= 0) return 0;
+    if (sourceByteOffsets.empty()) return std::min(wideFit, sourceLength);
+
+    size_t index = (size_t)std::min<int>(wideFit, (int)sourceByteOffsets.size() - 1);
+    return std::max(0, std::min(sourceLength, sourceByteOffsets[index]));
+}
+
+static void MapWidePartialExtentsToAnsiBytes(const std::vector<int>& sourceByteOffsets,
+    const int* wideDx, int wideCount, int sourceLength, int* ansiDx) {
+    if (!ansiDx || sourceLength <= 0) return;
+    if (!wideDx || wideCount <= 0 || sourceByteOffsets.empty()) {
+        std::fill(ansiDx, ansiDx + sourceLength, 0);
+        return;
+    }
+
+    int wideIndex = 0;
+    const int offsetCount = (int)sourceByteOffsets.size();
+    for (int byteIndex = 0; byteIndex < sourceLength; ++byteIndex) {
+        while (wideIndex + 1 < offsetCount &&
+            sourceByteOffsets[(size_t)wideIndex + 1] <= byteIndex) {
+            ++wideIndex;
+        }
+        int queryIndex = std::min(wideIndex, wideCount - 1);
+        ansiDx[byteIndex] = wideDx[queryIndex];
+    }
+}

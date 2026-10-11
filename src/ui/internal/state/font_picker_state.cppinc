@@ -435,6 +435,19 @@ static bool EnsurePaintBuffer(HDC hdc, int width, int height) {
     return true;
 }
 
+// 列表区海报背景（设计稿 Text.png 以 RCDATA 内嵌；缺失时回退纯渐变）。
+static const int LIST_BG_RESOURCE_ID = 101;
+static HBITMAP g_listBgBitmap = NULL;
+static int g_listBgW = 0;
+static int g_listBgH = 0;
+static bool g_listBgLoadDone = false;
+// 行卡片半透明底板缓存（让海报透出）；随卡片尺寸变化重建。
+static HBITMAP g_rowCardNormal = NULL;
+static HBITMAP g_rowCardHover = NULL;
+static HBITMAP g_rowCardSelected = NULL;
+static int g_rowCardW = 0;
+static int g_rowCardH = 0;
+
 // -----------------------------------------------------------------------------
 //  Helpers
 // -----------------------------------------------------------------------------

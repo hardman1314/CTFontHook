@@ -217,6 +217,9 @@
     <ClCompile Include="hooks\internal\engines\common\engine_common.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="CTFontHook.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="hooks\internal\engines\README.md" />
     <None Include="hooks\internal\engines\common\README.md" />
     <None Include="hooks\internal\engines\artemis\README.md" />
@@ -338,6 +341,7 @@
     <None Include="ui\internal\paint\font_picker_paint_spoof.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_text_substitution.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_compat.cppinc" />
+    <None Include="ui\internal\paint\font_picker_paint_list_bg.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_metrics.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_font_list.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_scrollbar.cppinc" />

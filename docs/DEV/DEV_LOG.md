@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-10-11　界面重构 批次3「海报背景图接入」（设计稿复刻）
+
+- **任务**：把设计稿里的角色海报（`设计图/Text.png`，343×412 RGBA，自身最大不透明度仅 ~27%）
+  作为**列表区背景图**接入；行卡片改为**半透明底板**，让海报透出（贴合设计稿观感）；
+  资源缺失 / 解码失败时回退批次 1 的纯渐变。
+- **改动文件**（6 改 + 3 新建，全部在计划内）：
+  - `src/res/list_bg.png`（**新建**）：海报资源（由 `设计图/Text.png` 复制，随 DLL 内嵌）。
+  - `src/CTFontHook.rc`（**新建**）：`101 RCDATA "res\\list_bg.png"`。
+  - `paint/font_picker_paint_list_bg.cppinc`（**新建**）：WIC 解码内嵌 PNG（预乘 32bpp DIB）+
+    行卡片半透明底板生成（圆角 + 横向渐变 + 预乘 alpha）+ `AlphaBlend` 合成 + 释放。
+  - `state/font_picker_state.cppinc`：新增海报 / 行卡片位图全局状态。
+  - `paint/font_picker_paint_font_list.cppinc`：绘制海报；行底板改半透明混合（无位图时回退渐变）。
+  - `font_picker.cpp`：`#include <wincodec.h>` + `#pragma comment(lib, "windowscodecs.lib")`。
+  - `font_picker_paint.cppinc`：挂接新分片（在字体列表之前）。
+  - `input/font_picker_wndproc.cppinc`：`WM_DESTROY` 释放海报 / 行卡片缓存。
+  - `src/CTFontHook.vcxproj`：新增 `<ResourceCompile>` 与两个新分片登记。
+- **做法**：WIC 把内嵌 PNG 解码为预乘 32bpp 顶朝下 DIB → `AlphaBlend` 缩放合成；
+  3 张缓存行底板（常态 / 悬停 / 选中，按卡片尺寸重建）逐行 `AlphaBlend`，让海报从行底下透出；
+  圆角用 1px 软边遮罩。
+- **关键坑**：`FindResource` 必须传选择器自己的 `g_hModule`；传 `NULL` 会指向宿主 EXE 而非本 DLL。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验），
+  `x64\Release\winmm.dll` 517120 字节、`Release\winmm.dll` 487424 字节；
+  `src\*\Release\CTFontHook.res` = 225324 字节，确认资源已编入。
+- **遗留**：海报缩放/锚点取自 `Text` 帧（470×410，CROP）+ 列表左上锚点，为近似值；
+  **观感需主人真机验证**后微调（`frameW/frameH` 与行底板透明度为可调常量）。
+  详见 [`features/界面重构-设计稿复刻.md`](features/界面重构-设计稿复刻.md)。
+
 ## 2026-10-11　界面重构 批次2「兼容设置区合并重排」（设计稿复刻）
 
 - **任务**：把 伪装 + 映射/转码 + 字形微调 合并为**一个「兼容设置」区**，按设计稿几何重排

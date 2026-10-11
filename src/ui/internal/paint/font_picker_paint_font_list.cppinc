@@ -45,6 +45,17 @@ static void PaintFontList(HDC mem, const RECT& rc)
     HFONT uiSmall = GetCachedPickerFont(L"Microsoft YaHei", SF(8), 0, FW_NORMAL, DEFAULT_CHARSET);
     BYTE gameCs = GetGameCharset();
 
+    // 海报背景（资源缺失 → 回退纯渐变）；行底板随之改为半透明混合。
+    EnsureListBackground();
+    bool blendedRows = false;
+    if (g_listBgBitmap) {
+        RECT r0 = GetListRowRect(0);
+        EnsureRowCardBitmaps(r0.right - r0.left, r0.bottom - r0.top);
+        RECT listRc = { 0, listTop, rc.right, listBottom };
+        DrawListPoster(mem, listRc);
+        blendedRows = (g_rowCardNormal != NULL);
+    }
+
     // 多绘制一行，让最后一行被列表底部裁切（设计稿的「露出一截」效果）。
     for (int visibleRow = 0; visibleRow <= VISIBLE_ITEMS; visibleRow++) {
         int idx = g_scrollOffset + visibleRow;
@@ -60,9 +71,13 @@ static void PaintFontList(HDC mem, const RECT& rc)
         const std::wstring& fontName = g_allFonts[g_filteredIndices[idx]].name;
 
         if (selected) {
-            COLORREF cols[3] = { SelOverColor(0.92f), SelOverColor(0.78f), SelOverColor(0.60f) };
-            float poss[3] = { 0.0f, 0.5f, 1.0f };
-            GradientHStops(mem, card, cols, poss, 3);
+            if (blendedRows) {
+                BlendRowCard(mem, card, 2);
+            } else {
+                COLORREF cols[3] = { SelOverColor(0.92f), SelOverColor(0.78f), SelOverColor(0.60f) };
+                float poss[3] = { 0.0f, 0.5f, 1.0f };
+                GradientHStops(mem, card, cols, poss, 3);
+            }
             DrawRoundRectOutline(mem, card, 6, COL_SELECTED_GLO);
             // 左侧强调竖条：竖向渐变
             RECT bar = { card.left + 2, card.top + (card.bottom - card.top - SF(35)) / 2,
@@ -70,9 +85,13 @@ static void PaintFontList(HDC mem, const RECT& rc)
             FillRoundRect(mem, bar, 2, COL_ACCENT_BAR_A);
             GradientV(mem, bar, COL_ACCENT_BAR_A, COL_ACCENT_BAR_B);
         } else {
-            COLORREF cols[2] = { RowOverColor(hovered ? 0.72f : 0.60f), RowOverColor(hovered ? 0.42f : 0.30f) };
-            float poss[2] = { 0.0f, 1.0f };
-            GradientHStops(mem, card, cols, poss, 2);
+            if (blendedRows) {
+                BlendRowCard(mem, card, hovered ? 1 : 0);
+            } else {
+                COLORREF cols[2] = { RowOverColor(hovered ? 0.72f : 0.60f), RowOverColor(hovered ? 0.42f : 0.30f) };
+                float poss[2] = { 0.0f, 1.0f };
+                GradientHStops(mem, card, cols, poss, 2);
+            }
             DrawRoundRectOutline(mem, card, 6,
                 MixColor(RowOverColor(0.5f), RGB(0xff, 0xff, 0xff), hovered ? 0.10f : 0.05f));
         }

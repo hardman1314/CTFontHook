@@ -784,6 +784,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         UnregisterHotKey(hWnd, HOTKEY_TOGGLE_PICKER_PAUSE);
         UnregisterHotKey(hWnd, HOTKEY_TOGGLE_PICKER_SCROLL_LOCK);
         ReleasePaintBuffer();
+        ReleaseListBackgroundCache();
         ClearPickerFontCache();
         if (g_editFont) {
             DeleteObject(g_editFont);

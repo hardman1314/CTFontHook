@@ -1,0 +1,4 @@
+// CTFontHook 资源：列表区海报背景（设计稿 Text.png）。
+// 资源 ID 101 与 ui/internal/state/font_picker_state.cppinc 的 LIST_BG_RESOURCE_ID 一致。
+
+101 RCDATA "res\\list_bg.png"

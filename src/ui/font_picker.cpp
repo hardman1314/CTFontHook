@@ -12,6 +12,7 @@
 #include <set>
 #include <dwmapi.h>
 #include <shlwapi.h>
+#include <wincodec.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <process.h>
@@ -28,6 +29,7 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "msimg32.lib")
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "windowscodecs.lib")
 
 using std::min;
 using std::max;

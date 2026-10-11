@@ -1,0 +1,203 @@
+// 列表区海报背景与行卡片半透明底板（设计稿复刻，批次 3）。
+// 海报来自内嵌资源（RCDATA），以 WIC 解码为预乘 32bpp DIB；资源缺失时回退纯渐变。
+
+static void ReleaseRowCardBitmaps() {
+    if (g_rowCardNormal) { DeleteObject(g_rowCardNormal); g_rowCardNormal = NULL; }
+    if (g_rowCardHover) { DeleteObject(g_rowCardHover); g_rowCardHover = NULL; }
+    if (g_rowCardSelected) { DeleteObject(g_rowCardSelected); g_rowCardSelected = NULL; }
+    g_rowCardW = 0;
+    g_rowCardH = 0;
+}
+
+static void ReleaseListBackgroundCache() {
+    if (g_listBgBitmap) { DeleteObject(g_listBgBitmap); g_listBgBitmap = NULL; }
+    g_listBgW = 0;
+    g_listBgH = 0;
+    g_listBgLoadDone = false;
+    ReleaseRowCardBitmaps();
+}
+
+// 用 WIC 把内嵌 PNG 解码为预乘 32bpp 顶朝下 DIB。
+static HBITMAP LoadPngResourceToDib(int resId, int* outW, int* outH) {
+    *outW = 0; *outH = 0;
+    HRSRC hRes = FindResourceW(g_hModule, MAKEINTRESOURCEW(resId), RT_RCDATA);
+    if (!hRes) return NULL;
+    HGLOBAL hData = LoadResource(g_hModule, hRes);
+    if (!hData) return NULL;
+    DWORD size = SizeofResource(g_hModule, hRes);
+    BYTE* pData = (BYTE*)LockResource(hData);
+    if (!pData || size == 0) return NULL;
+
+    HRESULT hrCo = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    bool uninit = (hrCo == S_OK || hrCo == S_FALSE);
+    if (FAILED(hrCo) && hrCo != RPC_E_CHANGED_MODE) return NULL;  // MTA 下 COM 仍可用
+
+    HBITMAP result = NULL;
+    IWICImagingFactory* factory = NULL;
+    IWICStream* stream = NULL;
+    IWICBitmapDecoder* decoder = NULL;
+    IWICBitmapFrameDecode* frame = NULL;
+    IWICFormatConverter* conv = NULL;
+    do {
+        if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&factory)))) break;
+        if (FAILED(factory->CreateStream(&stream))) break;
+        if (FAILED(stream->InitializeFromMemory(pData, size))) break;
+        if (FAILED(factory->CreateDecoderFromStream(stream, NULL,
+                WICDecodeMetadataCacheOnDemand, &decoder))) break;
+        if (FAILED(decoder->GetFrame(0, &frame))) break;
+        if (FAILED(factory->CreateFormatConverter(&conv))) break;
+        if (FAILED(conv->Initialize(frame, GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapDitherTypeNone, NULL, 0.0, WICBitmapPaletteTypeCustom))) break;
+
+        UINT w = 0, h = 0;
+        if (FAILED(conv->GetSize(&w, &h)) || w == 0 || h == 0) break;
+
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = (LONG)w;
+        bmi.bmiHeader.biHeight = -(LONG)h;  // 顶朝下
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+
+        HDC screen = GetDC(NULL);
+        void* bits = NULL;
+        result = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+        ReleaseDC(NULL, screen);
+        if (!result || !bits) { if (result) { DeleteObject(result); result = NULL; } break; }
+
+        UINT stride = w * 4;
+        if (FAILED(conv->CopyPixels(NULL, stride, stride * h, (BYTE*)bits))) {
+            DeleteObject(result); result = NULL; break;
+        }
+        *outW = (int)w;
+        *outH = (int)h;
+    } while (false);
+
+    if (conv) conv->Release();
+    if (frame) frame->Release();
+    if (decoder) decoder->Release();
+    if (stream) stream->Release();
+    if (factory) factory->Release();
+    if (uninit) CoUninitialize();
+    return result;
+}
+
+static void EnsureListBackground() {
+    if (g_listBgLoadDone) return;
+    g_listBgLoadDone = true;
+    g_listBgBitmap = LoadPngResourceToDib(LIST_BG_RESOURCE_ID, &g_listBgW, &g_listBgH);
+}
+
+// 圆角矩形覆盖率（软边 1px）。
+static float RoundRectCoverage(int x, int y, int w, int h, int r) {
+    if (r < 1) return 1.0f;
+    float cx = (x < r) ? (float)r : ((x >= w - r) ? (float)(w - 1 - r) : (float)x);
+    float cy = (y < r) ? (float)r : ((y >= h - r) ? (float)(h - 1 - r) : (float)y);
+    float dx = (float)x - cx, dy = (float)y - cy;
+    if (dx == 0.f && dy == 0.f) return 1.0f;
+    float d = sqrtf(dx * dx + dy * dy);
+    if (d <= r - 1.f) return 1.0f;
+    if (d >= r + 1.f) return 0.0f;
+    return r + 1.f - d;
+}
+
+// 生成预乘 32bpp 圆角渐变底板（横向多段渐变 + 每段透明度）。
+static HBITMAP CreateRowCardBitmap(int w, int h, const COLORREF* cols, const int* alphas,
+                                   int n, int radius) {
+    if (w <= 0 || h <= 0 || n < 2) return NULL;
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = w;
+    bmi.bmiHeader.biHeight = -h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    HDC screen = GetDC(NULL);
+    void* bits = NULL;
+    HBITMAP bmp = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+    ReleaseDC(NULL, screen);
+    if (!bmp || !bits) return NULL;
+
+    DWORD* pix = (DWORD*)bits;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float cov = RoundRectCoverage(x, y, w, h, radius);
+            if (cov <= 0.f) { pix[y * w + x] = 0; continue; }
+            float t = (w > 1) ? (float)x / (float)(w - 1) : 0.f;
+            int seg = 0;
+            while (seg < n - 2 && t > (float)(seg + 1) / (float)(n - 1)) ++seg;
+            float segT = t * (float)(n - 1) - (float)seg;
+            if (segT < 0.f) segT = 0.f;
+            if (segT > 1.f) segT = 1.f;
+            COLORREF c0 = cols[seg], c1 = cols[seg + 1];
+            int r0 = GetRValue(c0), g0 = GetGValue(c0), b0 = GetBValue(c0);
+            int r1 = GetRValue(c1), g1 = GetGValue(c1), b1 = GetBValue(c1);
+            int a0 = alphas[seg], a1 = alphas[seg + 1];
+            int r = (int)(r0 + (r1 - r0) * segT + 0.5f);
+            int g = (int)(g0 + (g1 - g0) * segT + 0.5f);
+            int b = (int)(b0 + (b1 - b0) * segT + 0.5f);
+            int a = (int)((a0 + (a1 - a0) * segT) * cov + 0.5f);
+            if (a < 0) a = 0;
+            if (a > 255) a = 255;
+            pix[y * w + x] = ((DWORD)a << 24) | ((DWORD)(r * a / 255) << 16) |
+                ((DWORD)(g * a / 255) << 8) | (DWORD)(b * a / 255);
+        }
+    }
+    return bmp;
+}
+
+static void EnsureRowCardBitmaps(int cardW, int cardH) {
+    if (g_rowCardNormal && g_rowCardW == cardW && g_rowCardH == cardH) return;
+    ReleaseRowCardBitmaps();
+    if (cardW <= 0 || cardH <= 0) return;
+
+    int radius = SF(6);
+    COLORREF normalCol[2] = { RGB(0x1b, 0x24, 0x33), RGB(0x1b, 0x24, 0x33) };
+    int normalA[2] = { 153, 77 };  // 0.60 -> 0.30
+    COLORREF hoverCol[2] = { RGB(0x1b, 0x24, 0x33), RGB(0x1b, 0x24, 0x33) };
+    int hoverA[2] = { 184, 107 };  // 0.72 -> 0.42
+    COLORREF selCol[3] = { RGB(0x28, 0x37, 0x50), RGB(0x25, 0x32, 0x48), RGB(0x20, 0x2b, 0x3d) };
+    int selA[3] = { 240, 226, 209 };  // 0.94 / 0.89 / 0.82
+
+    g_rowCardNormal = CreateRowCardBitmap(cardW, cardH, normalCol, normalA, 2, radius);
+    g_rowCardHover = CreateRowCardBitmap(cardW, cardH, hoverCol, hoverA, 2, radius);
+    g_rowCardSelected = CreateRowCardBitmap(cardW, cardH, selCol, selA, 3, radius);
+    g_rowCardW = cardW;
+    g_rowCardH = cardH;
+}
+
+static void BlendRowCard(HDC mem, const RECT& card, int style) {
+    HBITMAP bmp = (style == 2) ? g_rowCardSelected
+        : (style == 1 ? g_rowCardHover : g_rowCardNormal);
+    if (!bmp) return;
+    HDC dc = CreateCompatibleDC(mem);
+    if (!dc) return;
+    HGDIOBJ old = SelectObject(dc, bmp);
+    BLENDFUNCTION bf = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    AlphaBlend(mem, card.left, card.top, card.right - card.left, card.bottom - card.top,
+        dc, 0, 0, g_rowCardW, g_rowCardH, bf);
+    SelectObject(dc, old);
+    DeleteDC(dc);
+}
+
+// 海报按设计稿 Text 帧（470×410，CROP 覆盖）缩放，锚定列表区左上；超出部分被列表裁剪。
+static void DrawListPoster(HDC mem, const RECT& listRc) {
+    if (!g_listBgBitmap || g_listBgW <= 0 || g_listBgH <= 0) return;
+    const int frameW = 470;
+    const int frameH = 410;
+    float sx = (float)frameW / (float)g_listBgW;
+    float sy = (float)frameH / (float)g_listBgH;
+    float s = (sx > sy) ? sx : sy;
+    int dw = (int)(g_listBgW * s + 0.5f);
+    int dh = (int)(g_listBgH * s + 0.5f);
+
+    HDC dc = CreateCompatibleDC(mem);
+    if (!dc) return;
+    HGDIOBJ old = SelectObject(dc, g_listBgBitmap);
+    BLENDFUNCTION bf = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    AlphaBlend(mem, listRc.left, listRc.top, dw, dh, dc, 0, 0, g_listBgW, g_listBgH, bf);
+    SelectObject(dc, old);
+    DeleteDC(dc);
+}

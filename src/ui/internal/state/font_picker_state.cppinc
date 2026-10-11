@@ -270,6 +270,9 @@ static HWND g_hMetricEdit = NULL;
 static WNDPROC g_OldMetricEditProc = NULL;
 static MetricValueKind g_metricEditKind = METRIC_VALUE_NONE;
 static bool g_metricEditClosing = false;
+static HWND g_hPreviewTextEdit = NULL;
+static WNDPROC g_OldPreviewTextEditProc = NULL;
+static bool g_previewTextEditClosing = false;
 
 // UI font scale
 static float g_uiScale = 1.0f;
@@ -280,6 +283,7 @@ static int SF(int base) { return (int)(base * g_uiScale + 0.5f); }
 static bool g_scrollbarHovered = false;
 static bool g_rowApplyHovered = false;  // 选中行「应用」按钮悬停
 static bool g_currentFontHintHovered = false;  // 预览区「当前字体」提示悬停
+static bool g_previewSampleHovered = false;    // 预览区样例文字悬停
 static bool g_scrollbarDragging = false;
 static int g_scrollDragStartY = 0;
 static int g_scrollDragStartOffset = 0;

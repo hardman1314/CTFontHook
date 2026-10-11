@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-10-11　预览样例文字可编辑并持久化（P2-2）
+
+- **任务**：P2-2「预览看不到游戏自身文字」——让预览区第 1 行样例文字可由玩家自行输入，
+  以检验候选字体对游戏实际文本（人名 / 对话 / 生僻字）的渲染效果，并持久化到 `FontHook.ini`。
+- **路线选型（审计后二选一）**：采用**路线 A（用户可编辑样例）**；
+  **路线 B（Hook 游戏 TextOut/ExtTextOut/DrawText 自动抓取游戏原文）**因
+  需在渲染热路径截获字符串、涉及编解码与线程安全、出错会**直接影响游戏画面**而收益相近，
+  本次**不做**，降级 P3 评估。
+- **改动文件**（8 改 + 1 新建，全部在计划内）：
+  - `framework.h:98` / `utils.cpp:98,925,989`：新增配置 `Config::PreviewTextW[256]`，
+    `SaveConfig` 追加 `PreviewTextW` 键、`LoadConfig` 读取（空 = 内置默认）。
+  - `state/font_picker_state.cppinc:273-275,286`：新增行内编辑句柄/子类过程/关闭标志与样例区悬停标志。
+  - `state/font_picker_layout_geometry.cppinc:81`：`GetPreviewSampleRect()`（对齐绘制处 `contentRc`）。
+  - `input/font_picker_preview_edit.cppinc`（**新建**）：`StartPreviewTextEdit` /
+    `FinishPreviewTextEdit` / `PreviewTextEditSubclassProc`。
+  - `input/font_picker_wndproc.cppinc:166,329,585-641,664,680`：点击进入编辑、`EN_KILLFOCUS` 提交、
+    样例区 hover / 离开复位、点击链挂接。
+  - `paint/font_picker_paint_preview.cppinc:61-67,78-86`：第 1 行取 `Config::PreviewTextW`；
+    样例区右上角绘制「点击此处可编辑样例文字」提示（悬停高亮）。
+  - `font_picker_input.cppinc`：在 `wndproc` 之前 include 新 `.cppinc`（保证函数可见）。
+  - `CTFontHook.vcxproj`：登记新 `.cppinc` 为 `<None Include>`（与兄弟项一致，不参与编译）。
+- **做法**：完全复用既有「行内编辑框」模式（`input/font_picker_metric_edit.cppinc`）——
+  `CreateWindowExW(L"EDIT")` + 子类化 + `Enter` 提交 / `Esc` 取消 / `Tab` 透传 / 失焦提交。
+  空输入 = 回退内置默认样例，老用户无感知。
+- **明确不改**：预览第 2 行（假名 + 数字）保持固定（字形/字宽稳定基准）；不引入路线 B。
+- **验证**（实测）：`scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过；`git diff --stat` 8 文件 64 增 3 删 + 1 新建。
+- **遗留**：未做真机验证（输入框弹出位置/字体、失焦提交、`Tab` 透传、中日文存取显示）；
+  路线 B（游戏自身文字）仍待 P3 评估。
+
+---
+
 ## 2026-10-11　排版数值体验修整（P2-3）
 
 - **任务**：P2-3「排版数值单位不一致 / 下行填正数被静默取负」。

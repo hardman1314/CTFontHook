@@ -328,6 +328,7 @@
     <None Include="ui\internal\state\font_picker_window_animation.cppinc" />
     <None Include="ui\internal\input\font_picker_selection.cppinc" />
     <None Include="ui\internal\input\font_picker_metric_edit.cppinc" />
+    <None Include="ui\internal\input\font_picker_preview_edit.cppinc" />
     <None Include="ui\internal\input\font_picker_guide_input.cppinc" />
     <None Include="ui\internal\input\font_picker_wndproc.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_background.cppinc" />

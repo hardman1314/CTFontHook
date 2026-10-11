@@ -95,6 +95,7 @@ namespace Config {
     int DebugTraceSampleLimit = 0;
     int DebugPickerThreadLogLimit = 0;
     wchar_t ArtemisFontPath[MAX_PATH] = L"";
+    wchar_t PreviewTextW[256] = L"";
     int ArtemisFontSize = 0;
     int ArtemisRubySize = -1;
 }
@@ -921,6 +922,8 @@ namespace Utils {
         AppendIniInt(out, "FontLineSpacing", Config::FontLineSpacing);
         AppendIniInt(out, "FontWeight", Config::FontWeight);
 
+        AppendIniText(out, "PreviewTextW", WideToUtf8(Config::PreviewTextW));
+
         // Write with UTF-8 BOM
         HANDLE hFile = CreateFileW(iniPath.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile == INVALID_HANDLE_VALUE) {
@@ -982,6 +985,11 @@ namespace Utils {
             WideCharToMultiByte(CP_ACP, 0, Config::ForcedFontNameW, -1, Config::ForcedFontNameA, LF_FACESIZE - 1, NULL, NULL);
         }
         Config::ForcedFontNameA[LF_FACESIZE - 1] = '\0';
+
+        if (const std::string* previewTextValue = FindIniValue(kv, "PreviewTextW")) {
+            std::wstring previewText = Utf8ToWide(*previewTextValue);
+            wcsncpy_s(Config::PreviewTextW, previewText.c_str(), _TRUNCATE);
+        }
 
         Config::EnableFontHook = ReadIniInt(kv, "EnableFontHook", 0) != 0;
         Config::EnableFaceNameReplace = ReadIniInt(kv, "EnableFaceNameReplace", 0) != 0;

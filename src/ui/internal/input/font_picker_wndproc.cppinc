@@ -162,6 +162,14 @@ static bool HandleCurrentFontHintClick(HWND hWnd, int x, int y) {
     return true;
 }
 
+// 点击预览区样例文字 → 行内编辑自定义第 1 行样例。
+static bool HandlePreviewSampleClick(HWND hWnd, int x, int y) {
+    if (!PointInRect(x, y, GetPreviewSampleRect()))
+        return false;
+    StartPreviewTextEdit();
+    return true;
+}
+
 static bool HandleSpoofBarClick(HWND hWnd, int x, int y) {
     RECT area = GetSpoofAreaRect();
     if (!PointInRect(x, y, area))
@@ -318,6 +326,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             RefreshFilteredFontList(hWnd);
         } else if ((HWND)lParam == g_hMetricEdit && HIWORD(wParam) == EN_KILLFOCUS && !g_metricEditClosing) {
             FinishMetricEdit(true);
+        } else if ((HWND)lParam == g_hPreviewTextEdit && HIWORD(wParam) == EN_KILLFOCUS && !g_previewTextEditClosing) {
+            FinishPreviewTextEdit(true);
         }
         break;
 
@@ -569,6 +579,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
 
+        // 预览样例文字 hover
+        {
+            bool newSampleHover = PointInRect(x, y, GetPreviewSampleRect());
+            if (newSampleHover != g_previewSampleHovered) {
+                g_previewSampleHovered = newSampleHover;
+                InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+            }
+        }
+
         // List hover
         int hi = ListIndexFromPoint(y);
         if (hi >= 0) {
@@ -594,7 +613,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             || g_spoofToggleHovered || g_spoofCharsetHovered
             || g_textSubstitutionHovered || g_textSubstitutionModeHovered
             || g_codepageRedirectHovered || g_codepageRedirectPresetHovered
-            || g_metricHovered != METRIC_NONE || g_rowApplyHovered || g_currentFontHintHovered) {
+            || g_metricHovered != METRIC_NONE || g_rowApplyHovered || g_currentFontHintHovered
+            || g_previewSampleHovered) {
             int oldHovered = g_hoveredIndex;
             bool dirtyTitle = g_closeHovered || g_minHovered || g_zoomInHovered || g_zoomOutHovered ||
                 g_fontsPageTabHovered || g_guidePageTabHovered;
@@ -604,7 +624,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             bool dirtyTextSub = g_textSubstitutionHovered || g_textSubstitutionModeHovered ||
                 g_codepageRedirectHovered || g_codepageRedirectPresetHovered;
             bool dirtyMetrics = g_metricHovered != METRIC_NONE;
-            bool dirtyPreview = g_currentFontHintHovered;
+            bool dirtyPreview = g_currentFontHintHovered || g_previewSampleHovered;
             bool dirtyRowApply = g_rowApplyHovered;
             bool dirtyGuide = ClearGuidePageHoverState();
             g_hoveredIndex = -1; g_closeHovered = false; g_minHovered = false; g_scrollbarHovered = false;
@@ -618,6 +638,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_metricHovered = METRIC_NONE;
             g_rowApplyHovered = false;
             g_currentFontHintHovered = false;
+            g_previewSampleHovered = false;
             if (dirtyTitle) InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
             if (dirtyScrollbar) InvalidateUiRect(hWnd, GetScrollbarAreaRect(), 2);
             if (dirtyCharset) InvalidateUiRect(hWnd, GetCharsetAreaRect(), 1);
@@ -640,6 +661,9 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         int x = GET_X_LPARAM(lParam);
         int y = GET_Y_LPARAM(lParam);
 
+        if (g_hPreviewTextEdit)
+            FinishPreviewTextEdit(true);
+
         if (HandleTitleButtonClick(hWnd, x, y))
             return 0;
         if (g_pickerPage == PICKER_PAGE_GUIDE) {
@@ -653,6 +677,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             HandleMetricClick(hWnd, x, y) ||
             HandleScrollbarClick(hWnd, x, y) ||
             HandleRowApplyClick(hWnd, x, y) ||
+            HandlePreviewSampleClick(hWnd, x, y) ||
             HandleCurrentFontHintClick(hWnd, x, y)) {
             return 0;
         }

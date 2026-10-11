@@ -76,6 +76,11 @@ static RECT GetCurrentFontHintRect() {
     int bottom = WINDOW_HEIGHT - SF(6);
     return MakeUiRect(left, bottom - h, right, bottom);
 }
+
+// 预览区样例文字的可点击区：单击进入行内编辑，自定义第 1 行样例文字。
+static RECT GetPreviewSampleRect() {
+    return MakeUiRect(24, GetPreviewTop() + SF(24), WINDOW_WIDTH - 24, WINDOW_HEIGHT - SF(32));
+}
 static RECT GetScrollbarAreaRect() {
     return MakeUiRect(WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN - 4,
         GetListTop(), WINDOW_WIDTH, GetListBottom());

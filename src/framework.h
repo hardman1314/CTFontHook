@@ -94,6 +94,8 @@ namespace Config {
     extern int DebugTraceSampleLimit;
     extern int DebugPickerThreadLogLimit;
     extern wchar_t ArtemisFontPath[MAX_PATH];
+    // 预览区第 1 行可编辑样例文字（空 = 使用内置默认样例）。
+    extern wchar_t PreviewTextW[256];
     extern int ArtemisFontSize;
     extern int ArtemisRubySize;
 }

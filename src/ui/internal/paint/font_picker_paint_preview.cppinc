@@ -58,8 +58,11 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
         int previewLineStep = max(1, (int)(previewTm.tmHeight + previewTm.tmExternalLeading));
         if (Config::EnableFontLineSpacing && Config::FontLineSpacing != 0)
             previewLineStep = max(1, (int)previewTm.tmHeight + Config::FontLineSpacing);
+        std::wstring sampleLine = Config::PreviewTextW[0] != L'\0'
+            ? std::wstring(Config::PreviewTextW)
+            : std::wstring(L"\x300c\x6d4b\x8bd5\x6587\x5b57 Sample Text\x300d");
         const wchar_t* previewLines[] = {
-            L"\x300c\x6d4b\x8bd5\x6587\x5b57 Sample Text\x300d",
+            sampleLine.c_str(),
             L"\x3042\x3044\x3046\x3048\x304a 0123456789"
         };
         int lineY = contentRc.top;
@@ -70,6 +73,18 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
         if (oldCharExtra != 0x80000000 && oldCharExtra != 0x7FFFFFFF)
             SetTextCharacterExtra(mem, oldCharExtra);
         SelectObject(mem, oldPreviewFont);
+
+        // 样例区操作提示：悬停高亮，引导点击自定义第 1 行样例文字。
+        {
+            HFONT sampleHintFont = GetCachedPickerFont(L"Segoe UI", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
+            HGDIOBJ oldSampleHintFont = SelectObject(mem, sampleHintFont);
+            SetTextColor(mem, g_previewSampleHovered ? COL_ACCENT : COL_TEXT_HINT);
+            RECT sampleHintRc = { contentRc.left, contentRc.top + previewLineStep,
+                contentRc.right, contentRc.top + previewLineStep * 2 };
+            DrawTextW(mem, L"点击此处可编辑样例文字", -1, &sampleHintRc,
+                DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+            SelectObject(mem, oldSampleHintFont);
+        }
 
         // Bottom info line
         HFONT infoFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);

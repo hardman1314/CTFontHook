@@ -81,42 +81,17 @@ static bool HandleTitleButtonClick(HWND hWnd, int x, int y) {
     if (y >= TITLE_HEIGHT)
         return false;
 
-    int pageHit = PickerPageTabHitTest(x, y);
-    if (pageHit >= 0) {
-        SetPickerPage(hWnd, (PickerPage)pageHit);
+    if (HeaderPillHitTest(x, y)) {
+        SetPickerPage(hWnd, g_pickerPage == PICKER_PAGE_FONTS
+            ? PICKER_PAGE_GUIDE : PICKER_PAGE_FONTS);
         return true;
     }
 
-    int zoomBtnW = 34;
-    int zoomOutL = WINDOW_WIDTH - 88 - zoomBtnW * 2 - 4;
-    int zoomInL = zoomOutL + zoomBtnW + 2;
-    if (x >= zoomOutL && x < zoomOutL + zoomBtnW) {
-        g_uiScale = max(UI_SCALE_MIN, g_uiScale - UI_SCALE_STEP);
-        RecalcLayout();
-        ClampScroll();
-        if (g_pickerPage == PICKER_PAGE_GUIDE) {
-            g_guideContentHeight = 0;
-            g_guideScrollOffset = 0;
-        }
-        InvalidateRect(hWnd, NULL, FALSE);
-        return true;
-    }
-    if (x >= zoomInL && x < zoomInL + zoomBtnW) {
-        g_uiScale = min(UI_SCALE_MAX, g_uiScale + UI_SCALE_STEP);
-        RecalcLayout();
-        ClampScroll();
-        if (g_pickerPage == PICKER_PAGE_GUIDE) {
-            g_guideContentHeight = 0;
-            g_guideScrollOffset = 0;
-        }
-        InvalidateRect(hWnd, NULL, FALSE);
-        return true;
-    }
-    if (x >= WINDOW_WIDTH - 46) {
+    if (x >= WINDOW_WIDTH - SF(40)) {
         HidePickerWindowAnimated(hWnd);
         return true;
     }
-    if (x >= WINDOW_WIDTH - 88 && x < WINDOW_WIDTH - 46) {
+    if (x >= WINDOW_WIDTH - SF(76) && x < WINDOW_WIDTH - SF(40)) {
         MinimizePickerWindowNative(hWnd);
         return true;
     }
@@ -167,6 +142,20 @@ static bool HandlePreviewSampleClick(HWND hWnd, int x, int y) {
     if (!PointInRect(x, y, GetPreviewSampleRect()))
         return false;
     StartPreviewTextEdit();
+    return true;
+}
+
+// 点击预览区标题行 A−/A+ → 调整预览字号（仅本次会话有效，不写入配置）。
+static bool HandlePreviewFontButtonClick(HWND hWnd, int x, int y) {
+    int oldPx = g_previewFontPx;
+    if (PointInRect(x, y, GetPreviewFontMinusRect()))
+        g_previewFontPx = max(PREVIEW_FONT_MIN, g_previewFontPx - PREVIEW_FONT_STEP);
+    else if (PointInRect(x, y, GetPreviewFontPlusRect()))
+        g_previewFontPx = min(PREVIEW_FONT_MAX, g_previewFontPx + PREVIEW_FONT_STEP);
+    else
+        return false;
+    if (g_previewFontPx != oldPx)
+        InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
     return true;
 }
 
@@ -300,15 +289,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (x >= w - b)                 return HTRIGHT;
         if (y < b)                      return HTTOP;
         if (y >= h - b)                 return HTBOTTOM;
-        // Title bar (caption for drag, but not over page tabs or buttons).
-        {
-            int zoomBtnW = 34;
-            int zoomOutL = w - 88 - zoomBtnW * 2 - 4;
-            if (y < TITLE_HEIGHT) {
-                if (PickerPageTabHitTest(x, y) >= 0 || x >= zoomOutL)
-                    return HTCLIENT;
-                return HTCAPTION;
-            }
+        // Title bar (caption for drag, but not over the header pill / window buttons).
+        if (y < TITLE_HEIGHT) {
+            if (HeaderPillHitTest(x, y) || x >= w - SF(76))
+                return HTCLIENT;
+            return HTCAPTION;
         }
         return HTCLIENT;
     }
@@ -384,11 +369,29 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             return 0;
         }
         int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+        // Ctrl+滚轮：整体界面缩放（替代原标题栏 A−/A+ 按钮）。
+        if (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) {
+            int steps = delta / WHEEL_DELTA;
+            if (steps != 0) {
+                float newScale = g_uiScale + steps * UI_SCALE_STEP;
+                if (newScale < UI_SCALE_MIN) newScale = UI_SCALE_MIN;
+                if (newScale > UI_SCALE_MAX) newScale = UI_SCALE_MAX;
+                if (newScale != g_uiScale) {
+                    g_uiScale = newScale;
+                    RecalcLayout();
+                    ClampScroll();
+                    g_guideContentHeight = 0;
+                    g_guideScrollOffset = 0;
+                    InvalidateRect(hWnd, NULL, FALSE);
+                }
+            }
+            return 0;
+        }
         // Check if mouse is over charset bar for horizontal scroll
         POINT wpt;
         GetCursorPos(&wpt);
         ScreenToClient(hWnd, &wpt);
-        int csTop = TITLE_HEIGHT + SEARCH_HEIGHT;
+        int csTop = GetCharsetTop();
         if (wpt.y >= csTop && wpt.y < csTop + CHARSET_HEIGHT) {
             g_charsetWheelRemainder += delta;
             int notches = g_charsetWheelRemainder / WHEEL_DELTA;
@@ -438,25 +441,14 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 g_trackingMouseLeave = true;
         }
 
-        // Page tabs and title buttons (zoom A-/A+, minimize, close)
-        bool inClose = (x >= WINDOW_WIDTH - 46 && y < TITLE_HEIGHT);
-        bool inMin = (x >= WINDOW_WIDTH - 88 && x < WINDOW_WIDTH - 46 && y < TITLE_HEIGHT);
-        int zBtnW = 34;
-        int zOutL = WINDOW_WIDTH - 88 - zBtnW * 2 - 4;
-        int zInL = zOutL + zBtnW + 2;
-        bool inZoomOut = (y < TITLE_HEIGHT && x >= zOutL && x < zOutL + zBtnW);
-        bool inZoomIn  = (y < TITLE_HEIGHT && x >= zInL && x < zInL + zBtnW);
-        int pageHit = PickerPageTabHitTest(x, y);
-        bool inFontsPageTab = pageHit == PICKER_PAGE_FONTS;
-        bool inGuidePageTab = pageHit == PICKER_PAGE_GUIDE;
+        // 标题栏：页签药丸 + 最小化/关闭按钮
+        bool inClose = (x >= WINDOW_WIDTH - SF(40) && y < TITLE_HEIGHT);
+        bool inMin = (x >= WINDOW_WIDTH - SF(76) && x < WINDOW_WIDTH - SF(40) && y < TITLE_HEIGHT);
+        bool inPill = HeaderPillHitTest(x, y);
         if (inClose != g_closeHovered || inMin != g_minHovered ||
-            inZoomOut != g_zoomOutHovered || inZoomIn != g_zoomInHovered ||
-            inFontsPageTab != g_fontsPageTabHovered ||
-            inGuidePageTab != g_guidePageTabHovered) {
+            inPill != g_headerPillHovered) {
             g_closeHovered = inClose; g_minHovered = inMin;
-            g_zoomOutHovered = inZoomOut; g_zoomInHovered = inZoomIn;
-            g_fontsPageTabHovered = inFontsPageTab;
-            g_guidePageTabHovered = inGuidePageTab;
+            g_headerPillHovered = inPill;
             InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
         }
 
@@ -499,7 +491,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         // Charset bar hover
         {
-            int csTop = TITLE_HEIGHT + SEARCH_HEIGHT;
+            int csTop = GetCharsetTop();
             int newHov = -1;
             if (y >= csTop && y < csTop + CHARSET_HEIGHT)
                 newHov = CharsetHitTest(x, y);
@@ -511,7 +503,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         // Spoof bar hover
         {
-            int spTop = TITLE_HEIGHT + SEARCH_HEIGHT + CHARSET_HEIGHT;
+            int spTop = GetSpoofTop();
             bool newToggle = false, newCharset = false;
             if (y >= spTop && y < spTop + SPOOF_HEIGHT) {
                 int hit = SpoofBarHitTest(x, y);
@@ -588,6 +580,17 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
 
+        // 预览字号 A−/A+ hover
+        {
+            bool newMinusHover = PointInRect(x, y, GetPreviewFontMinusRect());
+            bool newPlusHover = PointInRect(x, y, GetPreviewFontPlusRect());
+            if (newMinusHover != g_previewFontMinusHovered || newPlusHover != g_previewFontPlusHovered) {
+                g_previewFontMinusHovered = newMinusHover;
+                g_previewFontPlusHovered = newPlusHover;
+                InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+            }
+        }
+
         // List hover
         int hi = ListIndexFromPoint(y);
         if (hi >= 0) {
@@ -607,29 +610,27 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_MOUSELEAVE:
         g_trackingMouseLeave = false;
         if (g_hoveredIndex != -1 || g_closeHovered || g_minHovered || g_scrollbarHovered || g_hoveredCharset != -1
-            || g_zoomInHovered || g_zoomOutHovered
-            || g_fontsPageTabHovered || g_guidePageTabHovered
+            || g_headerPillHovered
             || g_guideHoveredSection >= 0 || g_guideScrollbarHovered
             || g_spoofToggleHovered || g_spoofCharsetHovered
             || g_textSubstitutionHovered || g_textSubstitutionModeHovered
             || g_codepageRedirectHovered || g_codepageRedirectPresetHovered
             || g_metricHovered != METRIC_NONE || g_rowApplyHovered || g_currentFontHintHovered
-            || g_previewSampleHovered) {
+            || g_previewSampleHovered || g_previewFontMinusHovered || g_previewFontPlusHovered) {
             int oldHovered = g_hoveredIndex;
-            bool dirtyTitle = g_closeHovered || g_minHovered || g_zoomInHovered || g_zoomOutHovered ||
-                g_fontsPageTabHovered || g_guidePageTabHovered;
+            bool dirtyTitle = g_closeHovered || g_minHovered || g_headerPillHovered;
             bool dirtyScrollbar = g_scrollbarHovered;
             bool dirtyCharset = g_hoveredCharset != -1;
             bool dirtySpoof = g_spoofToggleHovered || g_spoofCharsetHovered;
             bool dirtyTextSub = g_textSubstitutionHovered || g_textSubstitutionModeHovered ||
                 g_codepageRedirectHovered || g_codepageRedirectPresetHovered;
             bool dirtyMetrics = g_metricHovered != METRIC_NONE;
-            bool dirtyPreview = g_currentFontHintHovered || g_previewSampleHovered;
+            bool dirtyPreview = g_currentFontHintHovered || g_previewSampleHovered ||
+                g_previewFontMinusHovered || g_previewFontPlusHovered;
             bool dirtyRowApply = g_rowApplyHovered;
             bool dirtyGuide = ClearGuidePageHoverState();
             g_hoveredIndex = -1; g_closeHovered = false; g_minHovered = false; g_scrollbarHovered = false;
-            g_hoveredCharset = -1; g_zoomInHovered = false; g_zoomOutHovered = false;
-            g_fontsPageTabHovered = false; g_guidePageTabHovered = false;
+            g_hoveredCharset = -1; g_headerPillHovered = false;
             g_spoofToggleHovered = false; g_spoofCharsetHovered = false;
             g_textSubstitutionHovered = false;
             g_textSubstitutionModeHovered = false;
@@ -639,6 +640,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_rowApplyHovered = false;
             g_currentFontHintHovered = false;
             g_previewSampleHovered = false;
+            g_previewFontMinusHovered = false;
+            g_previewFontPlusHovered = false;
             if (dirtyTitle) InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
             if (dirtyScrollbar) InvalidateUiRect(hWnd, GetScrollbarAreaRect(), 2);
             if (dirtyCharset) InvalidateUiRect(hWnd, GetCharsetAreaRect(), 1);
@@ -677,6 +680,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             HandleMetricClick(hWnd, x, y) ||
             HandleScrollbarClick(hWnd, x, y) ||
             HandleRowApplyClick(hWnd, x, y) ||
+            HandlePreviewFontButtonClick(hWnd, x, y) ||
             HandlePreviewSampleClick(hWnd, x, y) ||
             HandleCurrentFontHintClick(hWnd, x, y)) {
             return 0;

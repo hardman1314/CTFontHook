@@ -53,16 +53,16 @@ static void CreatePickerWindow() {
     SetLayeredWindowAttributes(g_hWnd, 0, PICKER_WINDOW_OPACITY, LWA_ALPHA);
     g_pickerAnimationCurrentAlpha = PICKER_WINDOW_OPACITY;
 
-    // Search edit
+    // Search edit（与 RecalcLayout 中的定位保持一致）
     g_hSearchEdit = CreateWindowExW(0, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-        22, TITLE_HEIGHT + 14, WINDOW_WIDTH - 62, 20,
+        SF(50), SF(46), WINDOW_WIDTH - SF(50) - SF(20), SF(16),
         g_hWnd, NULL, g_hModule, NULL);
     SendMessage(g_hSearchEdit, EM_SETCUEBANNER, FALSE, (LPARAM)L"  \x2727 搜索字体…");
 
     if (g_editFont) DeleteObject(g_editFont);
-    g_editFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    g_editFont = CreateFontW(-SF(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Microsoft YaHei");
     SendMessage(g_hSearchEdit, WM_SETFONT, (WPARAM)g_editFont, TRUE);
 
     g_OldEditProc = (WNDPROC)SetWindowLongPtr(g_hSearchEdit, GWLP_WNDPROC, (LONG_PTR)EditSubclassProc);

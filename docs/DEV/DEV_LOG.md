@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-10-11　界面重构 批次1「窗口骨架与配色」（设计稿复刻）
+
+- **任务**：按 Figma 设计稿（`设计图/`）把字体选择窗口整体重绘为「深海蓝」暗色面板，
+  **外观严格复刻、功能一个不丢**。本次为三批次中的**批次 1**：窗口骨架与配色。
+- **三项用户决策**：①复刻严格度 = 设计外观 + 保留全部功能；
+  ②窗口默认 410×724、仍可缩放（最小 380×660）；③列表背景图由主人从 Figma 导出（批次 3 接入）。
+  另：UI 整体缩放由「标题栏 A−/A+」改为 **Ctrl+滚轮**；预览字号 A−/A+ **仅本次会话有效**（默认 22px）。
+- **改动文件**（15 改 + 1 新建，全部在计划内）：
+  - `state/font_picker_state.cppinc`：布局常量（410×724，TITLE 32 / SEARCH 27 / CHARSET 38 /
+    HINT 24 / SPOOF 40 / TEXTSUB 34 / METRICS 150 / PREVIEW 136 / BOTTOM_BAR 29 / 圆角 11）；
+    调色板整套换为设计色（保留 `COL_*` 名，仅改值）；新增预览字号状态与西文名缓存。
+  - `state/font_picker_layout_geometry.cppinc`：区块自下而上推导新 `Get*Top()`；
+    新增标题药丸/各区块/预览框/字号控件矩形；新增 `GradientH` / `GradientVStops` / `GradientHStops`；
+    移除旧 `PickerPageTab*` API。
+  - `paint/font_picker_paint_status.cppinc`（**新建**）：`PaintListHint` + `PaintBottomBar`。
+  - `paint/font_picker_paint_background.cppinc`：底色渐变 + 新增 `PaintCompatBackdrop`（设置区底板）。
+  - `paint/font_picker_paint_title/search/charset/font_list/preview/border.cppinc`：按设计重绘。
+  - `paint/font_picker_paint_spoof/text_substitution/metrics.cppinc`：去各自背景/分隔线，
+    改用设计配色与 `Microsoft YaHei`。
+  - `font_picker_paint.cppinc`：挂接 `PaintCompatBackdrop` / `PaintListHint` / `PaintBottomBar`。
+  - `input/font_picker_wndproc.cppinc`：改用 `GetCharsetTop()`/`GetSpoofTop()`；标题栏去 A−/A+，
+    改单页签 `HeaderPillHitTest`，新增 **Ctrl+滚轮缩放** 与 **预览字号 A−/A+** 点击/悬停。
+  - `font_picker_lifecycle.cppinc`：搜索框定位/字体对齐新布局。
+- **做法**：调色板「保名改值」，使 696 行的指南绘制与旧工具条**自动换色**，避免逐文件重写；
+  区块自下而上定位，保证底栏贴底；多段渐变用「逐段两色标填充」规避 `GradientFill` 多顶点限制。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验）。
+- **遗留**：批次 2（兼容设置区合并重排）、批次 3（海报背景图 RCDATA+WIC）待做；
+  圆角为 1px 描边贴合方角窗口（无原生边框）；**观感需主人真机验证**（本机无法可视化验证 GDI 窗口）。
+  详见 [`features/界面重构-设计稿复刻.md`](features/界面重构-设计稿复刻.md)。
+
 ## 2026-10-11　预览样例文字可编辑并持久化（P2-2）
 
 - **任务**：P2-2「预览看不到游戏自身文字」——让预览区第 1 行样例文字可由玩家自行输入，

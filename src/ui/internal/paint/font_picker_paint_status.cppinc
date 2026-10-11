@@ -1,0 +1,63 @@
+// 列表下方提示行 + 底部状态栏（设计稿）。
+
+static void PaintListHint(HDC mem, const RECT& rc)
+{
+    RECT area = GetHintAreaRect();
+    if (area.bottom <= area.top) return;
+
+    HFONT hintFont = GetCachedPickerFont(L"Microsoft YaHei", SF(8), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HGDIOBJ oldFont = SelectObject(mem, hintFont);
+    SetTextColor(mem, COL_TEXT_HINT);
+    RECT textRc = { SF(15), area.top, rc.right - SF(13), area.bottom };
+    DrawTextW(mem, L"\x9009\x62E9\x5B57\x4F53\x9884\x89C8\xFF0C\x70B9\x51FB\x300C\x5E94\x7528\x300D\x8BBE\x4E3A\x5F53\x524D\x65B9\x6848 \xB7 \x6F14\x793A\x5B57\x4F53",
+        -1, &textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    SelectObject(mem, oldFont);
+}
+
+static void PaintBottomBar(HDC mem, const RECT& rc)
+{
+    RECT bar = GetBottomBarRect();
+    if (bar.bottom <= bar.top) return;
+
+    HBRUSH br = CreateSolidBrush(COL_PANEL_BG);
+    FillRect(mem, &bar, br);
+    DeleteObject(br);
+
+    // 与预览区之间的细分隔线
+    HPEN sep = CreatePen(PS_SOLID, 1, COL_SEPARATOR);
+    HGDIOBJ oldSep = SelectObject(mem, sep);
+    MoveToEx(mem, 0, bar.top, NULL);
+    LineTo(mem, rc.right, bar.top);
+    SelectObject(mem, oldSep);
+    DeleteObject(sep);
+
+    int centerY = bar.top + (bar.bottom - bar.top) / 2;
+
+    // ● 当前方案：XXX
+    HBRUSH dotBr = CreateSolidBrush(COL_DOT_OK);
+    HGDIOBJ oldDotBr = SelectObject(mem, dotBr);
+    HGDIOBJ oldDotPen = SelectObject(mem, GetStockObject(NULL_PEN));
+    Ellipse(mem, SF(13), centerY - SF(2), SF(13) + SF(4), centerY + SF(2));
+    SelectObject(mem, oldDotPen);
+    SelectObject(mem, oldDotBr);
+    DeleteObject(dotBr);
+
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HGDIOBJ oldFont = SelectObject(mem, font);
+    SetTextColor(mem, COL_TEXT_DIM);
+    std::wstring curText = L"\x5F53\x524D\x65B9\x6848\xFF1A";  // 当前方案：
+    curText += g_appliedFont.empty() ? L"\xFF08\x672A\x5E94\x7528\xFF09" : g_appliedFont;
+    RECT curRc = { SF(23), bar.top, rc.right - SF(60), bar.bottom };
+    DrawTextW(mem, curText.c_str(), -1, &curRc,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+    // 右侧：界面预览（无热键时改为降级提示，保留 P0-2 行为）
+    SetTextColor(mem, g_toggleHotkeyRegistered ? COL_TEXT_DIM : COL_WARN);
+    const wchar_t* rightText = g_toggleHotkeyRegistered
+        ? L"\x754C\x9762\x9884\x89C8"                                      // 界面预览
+        : L"\x65E0\x70ED\x952E\xB7\x5173\x95ED\x3D\x6700\x5C0F\x5316";    // 无热键·关闭=最小化
+    RECT rightRc = { rc.right / 2, bar.top, rc.right - SF(13), bar.bottom };
+    DrawTextW(mem, rightText, -1, &rightRc,
+        DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    SelectObject(mem, oldFont);
+}

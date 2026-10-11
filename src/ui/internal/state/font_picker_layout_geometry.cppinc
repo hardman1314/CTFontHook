@@ -4,49 +4,53 @@ static BYTE GetGameCharset() {
     return DEFAULT_CHARSET;
 }
 
-static int GetTextSubTop() { return TITLE_HEIGHT + SEARCH_HEIGHT + CHARSET_HEIGHT + SPOOF_HEIGHT; }
-static int GetListTop() { return GetTextSubTop() + TEXTSUB_HEIGHT; }
-static int GetMetricsTop() { return WINDOW_HEIGHT - PREVIEW_HEIGHT - METRICS_HEIGHT; }
-static int GetPreviewTop() { return WINDOW_HEIGHT - PREVIEW_HEIGHT; }
-static int GetListBottom() { return GetMetricsTop(); }
+// -----------------------------------------------------------------------------
+//  分区（严格按设计稿推导；底部各段自下而上定位，保证底栏始终贴底）
+//  纵序：标题栏 / 搜索 / 药丸 / 列表 / 提示 / 兼容设置(伪装·映射转码·字形微调)
+//        / 文字预览 / 底栏
+// -----------------------------------------------------------------------------
+static int GetSearchTop()    { return TITLE_HEIGHT + TOP_BLOCK_PAD_TOP; }
+static int GetCharsetTop()   { return GetSearchTop() + SEARCH_HEIGHT; }
+static int GetListTop()      { return GetCharsetTop() + CHARSET_HEIGHT; }
+static int GetBottomBarTop() { return WINDOW_HEIGHT - BOTTOM_BAR_HEIGHT; }
+static int GetPreviewTop()   { return GetBottomBarTop() - PREVIEW_HEIGHT; }
+static int GetMetricsTop()   { return GetPreviewTop() - METRICS_HEIGHT; }
+static int GetTextSubTop()   { return GetMetricsTop() - TEXTSUB_HEIGHT; }
+static int GetSpoofTop()     { return GetTextSubTop() - SPOOF_HEIGHT; }
+static int GetCompatTop()    { return GetSpoofTop(); }
+static int GetHintTop()      { return GetCompatTop() - HINT_HEIGHT; }
+static int GetListBottom()   { return GetHintTop(); }
 
 static RECT MakeUiRect(int left, int top, int right, int bottom) {
     RECT rc = { left, top, right, bottom };
     return rc;
 }
 
+static bool PointInRect(int x, int y, const RECT& rc);
+
 static RECT GetTitleAreaRect() { return MakeUiRect(0, 0, WINDOW_WIDTH, TITLE_HEIGHT); }
 
-struct PickerPageTabRects {
-    RECT fonts;
-    RECT guide;
-};
+// 标题栏「指南 / 字体」页签药丸（设计稿只有一个页签按钮）。
+static RECT GetHeaderPillRect() { return MakeUiRect(108, 5, 150, TITLE_HEIGHT - 5); }
 
-static PickerPageTabRects GetPickerPageTabRects() {
-    PickerPageTabRects rects = {};
-    int top = 7;
-    int bottom = TITLE_HEIGHT - 7;
-    rects.fonts = MakeUiRect(40, top, 100, bottom);
-    rects.guide = MakeUiRect(104, top, 176, bottom);
-    return rects;
+static bool HeaderPillHitTest(int x, int y) {
+    return PointInRect(x, y, GetHeaderPillRect());
 }
 
-static int PickerPageTabHitTest(int x, int y) {
-    PickerPageTabRects rects = GetPickerPageTabRects();
-    if (x >= rects.fonts.left && x < rects.fonts.right &&
-        y >= rects.fonts.top && y < rects.fonts.bottom)
-        return PICKER_PAGE_FONTS;
-    if (x >= rects.guide.left && x < rects.guide.right &&
-        y >= rects.guide.top && y < rects.guide.bottom)
-        return PICKER_PAGE_GUIDE;
-    return -1;
+static RECT GetSearchAreaRect() {
+    return MakeUiRect(0, GetSearchTop(), WINDOW_WIDTH, GetSearchTop() + SEARCH_HEIGHT);
 }
-
 static RECT GetCharsetAreaRect() {
-    return MakeUiRect(0, TITLE_HEIGHT + SEARCH_HEIGHT, WINDOW_WIDTH, TITLE_HEIGHT + SEARCH_HEIGHT + CHARSET_HEIGHT);
+    return MakeUiRect(0, GetCharsetTop(), WINDOW_WIDTH, GetCharsetTop() + CHARSET_HEIGHT);
+}
+static RECT GetCompatAreaRect() {
+    return MakeUiRect(0, GetCompatTop(), WINDOW_WIDTH, GetPreviewTop());
+}
+static RECT GetHintAreaRect() {
+    return MakeUiRect(0, GetHintTop(), WINDOW_WIDTH, GetHintTop() + HINT_HEIGHT);
 }
 static RECT GetSpoofAreaRect() {
-    int top = TITLE_HEIGHT + SEARCH_HEIGHT + CHARSET_HEIGHT;
+    int top = GetSpoofTop();
     return MakeUiRect(0, top, WINDOW_WIDTH, top + SPOOF_HEIGHT);
 }
 static RECT GetTextSubAreaRect() {
@@ -55,32 +59,49 @@ static RECT GetTextSubAreaRect() {
 }
 static RECT GetListAreaRect() { return MakeUiRect(0, GetListTop(), WINDOW_WIDTH, GetListBottom()); }
 static RECT GetMetricsAreaRect() { return MakeUiRect(0, GetMetricsTop(), WINDOW_WIDTH, GetPreviewTop()); }
-static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
+static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, GetBottomBarTop()); }
+static RECT GetBottomBarRect() { return MakeUiRect(0, GetBottomBarTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
+
+// 列表行卡片矩形（行高 ITEM_HEIGHT，卡片下方留 5px 行间距）。
+static RECT GetListRowRect(int visibleRow) {
+    int top = GetListTop() + visibleRow * ITEM_HEIGHT;
+    return MakeUiRect(14, top, WINDOW_WIDTH - 20, top + ITEM_HEIGHT - 5);
+}
+
 // 选中行右侧的「应用」按钮：单击列表仍只选中，应用由该按钮触发。
 static RECT GetListRowActionButtonRect(int filteredIdx) {
-    int visibleRow = filteredIdx - g_scrollOffset;
-    int itemTop = GetListTop() + visibleRow * ITEM_HEIGHT;
-    int itemRight = WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN * 2 - 4;
-    int btnW = SF(64);
-    int btnH = SF(24);
-    int right = itemRight - 8;
-    int top = itemTop + (ITEM_HEIGHT - btnH) / 2;
+    RECT row = GetListRowRect(filteredIdx - g_scrollOffset);
+    int btnW = SF(72);
+    int btnH = SF(26);
+    int right = row.right - 9;
+    int top = row.top + ((row.bottom - row.top) - btnH) / 2;
     return MakeUiRect(right - btnW, top, right, top + btnH);
 }
 
-// 预览区右下角的「当前字体」提示：单击可跳到当前已应用的字体。
+// 文字预览区底行（左：点击提示；右：当前字体名，可点击跳到列表）。
+static int GetPreviewBottomRowTop() { return GetBottomBarTop() - SF(17); }
 static RECT GetCurrentFontHintRect() {
-    int h = SF(24);
-    int left = WINDOW_WIDTH / 2 + 60;
-    int right = WINDOW_WIDTH - SF(14);
-    int bottom = WINDOW_HEIGHT - SF(6);
-    return MakeUiRect(left, bottom - h, right, bottom);
+    return MakeUiRect(WINDOW_WIDTH / 2, GetPreviewBottomRowTop() - SF(3),
+        WINDOW_WIDTH - SF(10), GetPreviewBottomRowTop() + SF(13));
 }
 
-// 预览区样例文字的可点击区：单击进入行内编辑，自定义第 1 行样例文字。
-static RECT GetPreviewSampleRect() {
-    return MakeUiRect(24, GetPreviewTop() + SF(24), WINDOW_WIDTH - 24, WINDOW_HEIGHT - SF(32));
+// 文字预览框（单击进入样例文字行内编辑）。
+static RECT GetPreviewBoxRect() {
+    return MakeUiRect(10, GetPreviewTop() + SF(24), WINDOW_WIDTH - 10, GetPreviewBottomRowTop() - SF(2));
 }
+static RECT GetPreviewSampleRect() { return GetPreviewBoxRect(); }
+
+// 预览区标题行右侧的字号 -/数值/+ 控件。
+static RECT GetPreviewFontMinusRect() {
+    return MakeUiRect(WINDOW_WIDTH - 72, GetPreviewTop() + SF(6), WINDOW_WIDTH - 59, GetPreviewTop() + SF(20));
+}
+static RECT GetPreviewFontValueRect() {
+    return MakeUiRect(WINDOW_WIDTH - 52, GetPreviewTop() + SF(6), WINDOW_WIDTH - 30, GetPreviewTop() + SF(20));
+}
+static RECT GetPreviewFontPlusRect() {
+    return MakeUiRect(WINDOW_WIDTH - 23, GetPreviewTop() + SF(6), WINDOW_WIDTH - 10, GetPreviewTop() + SF(20));
+}
+
 static RECT GetScrollbarAreaRect() {
     return MakeUiRect(WINDOW_WIDTH - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN - 4,
         GetListTop(), WINDOW_WIDTH, GetListBottom());
@@ -124,19 +145,20 @@ static void InvalidateSelectionChange(HWND hWnd, int oldSelected, int oldScrollO
 }
 
 static void RecalcLayout() {
-    ITEM_HEIGHT = SF(56);
+    ITEM_HEIGHT = SF(57);
     LIST_HEIGHT = GetListBottom() - GetListTop();
     if (LIST_HEIGHT < 0) LIST_HEIGHT = 0;
     VISIBLE_ITEMS = LIST_HEIGHT / ITEM_HEIGHT;
     if (VISIBLE_ITEMS < 1) VISIBLE_ITEMS = 1;
-    // Reposition search edit and update its font
+    // Reposition search edit and update its font（搜索框内左侧图标后）
     if (g_hSearchEdit) {
-        int editH = SF(20);
-        int editY = TITLE_HEIGHT + (SEARCH_HEIGHT - editH) / 2;
-        MoveWindow(g_hSearchEdit, 22, editY, WINDOW_WIDTH - 62, editH, TRUE);
+        int editH = SF(16);
+        int editX = SF(13 + 37);
+        int editY = GetSearchTop() + (SEARCH_HEIGHT - editH) / 2;
+        MoveWindow(g_hSearchEdit, editX, editY, WINDOW_WIDTH - editX - SF(20), editH, TRUE);
         if (g_editFont) DeleteObject(g_editFont);
-        g_editFont = CreateFontW(-SF(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        g_editFont = CreateFontW(-SF(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Microsoft YaHei");
         SendMessage(g_hSearchEdit, WM_SETFONT, (WPARAM)g_editFont, TRUE);
     }
 }
@@ -177,6 +199,48 @@ static void GradientV(HDC hdc, const RECT& rc, COLORREF top, COLORREF bottom) {
     v[1].Alpha = 0;
     GRADIENT_RECT gr = { 0, 1 };
     GradientFill(hdc, v, 2, &gr, 1, GRADIENT_FILL_RECT_V);
+}
+
+static void GradientH(HDC hdc, const RECT& rc, COLORREF left, COLORREF right) {
+    TRIVERTEX v[2];
+    v[0].x = rc.left;  v[0].y = rc.top;
+    v[0].Red   = (COLOR16)(GetRValue(left) << 8);
+    v[0].Green = (COLOR16)(GetGValue(left) << 8);
+    v[0].Blue  = (COLOR16)(GetBValue(left) << 8);
+    v[0].Alpha = 0;
+    v[1].x = rc.right; v[1].y = rc.bottom;
+    v[1].Red   = (COLOR16)(GetRValue(right) << 8);
+    v[1].Green = (COLOR16)(GetGValue(right) << 8);
+    v[1].Blue  = (COLOR16)(GetBValue(right) << 8);
+    v[1].Alpha = 0;
+    GRADIENT_RECT gr = { 0, 1 };
+    GradientFill(hdc, v, 2, &gr, 1, GRADIENT_FILL_RECT_H);
+}
+
+// 多段纵向渐变：逐段用两色标填充，规避 GradientFill 多顶点限制。
+static void GradientVStops(HDC hdc, const RECT& rc, const COLORREF* cols, const float* poss, int n) {
+    if (n < 2 || rc.bottom <= rc.top) return;
+    int h = rc.bottom - rc.top;
+    for (int i = 0; i + 1 < n; ++i) {
+        int y0 = (i == 0) ? rc.top : rc.top + (int)(h * poss[i] + 0.5f);
+        int y1 = (i + 1 == n - 1) ? rc.bottom : rc.top + (int)(h * poss[i + 1] + 0.5f);
+        if (y1 <= y0) continue;
+        RECT band = { rc.left, y0, rc.right, y1 };
+        GradientV(hdc, band, cols[i], cols[i + 1]);
+    }
+}
+
+// 多段横向渐变。
+static void GradientHStops(HDC hdc, const RECT& rc, const COLORREF* cols, const float* poss, int n) {
+    if (n < 2 || rc.right <= rc.left) return;
+    int w = rc.right - rc.left;
+    for (int i = 0; i + 1 < n; ++i) {
+        int x0 = (i == 0) ? rc.left : rc.left + (int)(w * poss[i] + 0.5f);
+        int x1 = (i + 1 == n - 1) ? rc.right : rc.left + (int)(w * poss[i + 1] + 0.5f);
+        if (x1 <= x0) continue;
+        RECT band = { x0, rc.top, x1, rc.bottom };
+        GradientH(hdc, band, cols[i], cols[i + 1]);
+    }
 }
 
 static bool PointInRect(int x, int y, const RECT& rc) {
@@ -302,24 +366,23 @@ static void GetScrollbarRect(RECT* thumbRc, RECT* trackRc) {
 // Returns the charset pill index at (x,y), or -1 if none.
 // Also computes total content width for scroll clamping.
 static int CharsetHitTest(int x, int y, int* outTotalWidth = nullptr) {
-    int csTop = TITLE_HEIGHT + SEARCH_HEIGHT;
-    int pillY = csTop + 6;
-    int pillH = CHARSET_HEIGHT - 12;
+    int pillY = GetCharsetTop() + 7;
+    int pillH = 24;
     bool yInRange = (y >= pillY && y < pillY + pillH);
 
     // We need an HDC to measure text
     HDC hdc = GetDC(NULL);
-    HFONT csFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HFONT csFont = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
     HGDIOBJ old = SelectObject(hdc, csFont);
 
-    int pillX = 8 - g_charsetScrollX;
+    int pillX = SF(13) - g_charsetScrollX;
     int result = -1;
     for (int i = 0; i < g_charsetCount; i++) {
         SIZE sz;
         GetTextExtentPoint32W(hdc, g_charsets[i].label, (int)wcslen(g_charsets[i].label), &sz);
-        int pillW = sz.cx + SF(16);
+        int pillW = sz.cx + SF(18);
         if (yInRange && x >= pillX && x < pillX + pillW) result = i;
-        pillX += pillW + 5;
+        pillX += pillW + 6;
     }
 
     if (outTotalWidth) *outTotalWidth = pillX + g_charsetScrollX;
@@ -331,15 +394,15 @@ static int CharsetHitTest(int x, int y, int* outTotalWidth = nullptr) {
 
 // Spoof bar hit test: returns 0=toggle, 1=target charset, -1=none.
 static int SpoofBarHitTest(int x, int y) {
-    int spTop = TITLE_HEIGHT + SEARCH_HEIGHT + CHARSET_HEIGHT;
+    int spTop = GetSpoofTop();
     int py = spTop + (SPOOF_HEIGHT - 24) / 2;
     if (y < py || y >= py + 24) return -1;
 
     HDC hdc = GetDC(NULL);
-    HFONT spFontBold = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT spFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HFONT spFontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT spFont = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
 
-    int px = 10;
+    int px = 13;
     int result = -1;
 
     // Toggle
@@ -375,11 +438,11 @@ static int TextSubstitutionHitTest(int x, int y) {
     if (y < py || y >= py + 24) return -1;
 
     HDC hdc = GetDC(NULL);
-    HFONT fontBold = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
-    HFONT font = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
+    HFONT fontBold = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
+    HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
     HGDIOBJ old = SelectObject(hdc, fontBold);
 
-    int px = 10;
+    int px = 13;
     int result = -1;
     const wchar_t* toggleLabel = g_textSubstitutionEnabled ? L"\x6620\x5C04: \x5F00" : L"\x6620\x5C04: \x5173";
     SIZE sz; GetTextExtentPoint32W(hdc, toggleLabel, (int)wcslen(toggleLabel), &sz);

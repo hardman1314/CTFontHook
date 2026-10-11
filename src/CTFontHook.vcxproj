@@ -341,6 +341,7 @@
     <None Include="ui\internal\paint\font_picker_paint_font_list.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_scrollbar.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_preview.cppinc" />
+    <None Include="ui\internal\paint\font_picker_paint_status.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_guide.cppinc" />
     <None Include="ui\internal\paint\font_picker_paint_border.cppinc" />
   </ItemGroup>

@@ -1,29 +1,23 @@
 static void PaintSearchArea(HDC mem, const RECT& rc)
 {
-    // Search area.
-    RECT searchAreaRc = { 0, TITLE_HEIGHT, rc.right, TITLE_HEIGHT + SEARCH_HEIGHT };
-    {
-        HBRUSH sbr = CreateSolidBrush(COL_SEARCH_BG);
-        FillRect(mem, &searchAreaRc, sbr);
-        DeleteObject(sbr);
-    }
+    // 搜索框：圆角面板（设计稿 [13, +9, W-13, +27] r6，底 #121821）。
+    RECT box = { SF(13), GetSearchTop(), WINDOW_WIDTH - SF(13), GetSearchTop() + SEARCH_HEIGHT };
+    FillRoundRect(mem, box, 6, COL_SEARCH_BG);
 
-    // Search box outline (rounded, with pink glow when focused)
     HWND focusWnd = GetFocus();
-    COLORREF searchBorderCol = (focusWnd == g_hSearchEdit) ? COL_ACCENT : COL_BORDER;
-    RECT searchBoxRc = { 14, TITLE_HEIGHT + 10, WINDOW_WIDTH - 14, TITLE_HEIGHT + SEARCH_HEIGHT - 10 };
-    DrawRoundRectOutline(mem, searchBoxRc, 14, searchBorderCol);
+    COLORREF borderCol = (focusWnd == g_hSearchEdit) ? COL_ACCENT : COL_BORDER;
+    DrawRoundRectOutline(mem, box, 6, borderCol);
 
-    // Search icon (magnifying glass)
-    HPEN iconPen = CreatePen(PS_SOLID, 2, COL_TEXT_DIM);
+    // 放大镜图标（设计稿 16×16，置于内边距 12 之后）
+    int iconCx = SF(13 + 12) + SF(7);
+    int iconCy = GetSearchTop() + SEARCH_HEIGHT / 2;
+    HPEN iconPen = CreatePen(PS_SOLID, 1, COL_TEXT_HINT);
     HGDIOBJ oldPen = SelectObject(mem, iconPen);
-    HGDIOBJ oldIconBr = SelectObject(mem, GetStockObject(NULL_BRUSH));
-    int iconCx = WINDOW_WIDTH - 32, iconCy = TITLE_HEIGHT + SEARCH_HEIGHT / 2 - 2;
-    Ellipse(mem, iconCx - 6, iconCy - 6, iconCx + 4, iconCy + 4);
-    MoveToEx(mem, iconCx + 2, iconCy + 2, NULL);
-    LineTo(mem, iconCx + 7, iconCy + 7);
-    SelectObject(mem, oldIconBr);
+    HGDIOBJ oldBr = SelectObject(mem, GetStockObject(NULL_BRUSH));
+    Ellipse(mem, iconCx - SF(5), iconCy - SF(5), iconCx + SF(3), iconCy + SF(3));
+    MoveToEx(mem, iconCx + SF(2), iconCy + SF(2), NULL);
+    LineTo(mem, iconCx + SF(6), iconCy + SF(6));
+    SelectObject(mem, oldBr);
     SelectObject(mem, oldPen);
     DeleteObject(iconPen);
-
 }

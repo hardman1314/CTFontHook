@@ -1,10 +1,23 @@
 static void PaintBackground(HDC mem, const RECT& rc)
 {
-    // Background.
+    // 窗口底：深海蓝垂直渐变（设计稿 #191f29）。
     RECT bgRc = { 0, 0, rc.right, rc.bottom };
     GradientV(mem, bgRc, COL_BG_TOP, COL_BG_BOT);
-    
-    // Subtle background pattern
-    DrawDiagonalPattern(mem, bgRc, MixColor(COL_BG_TOP, COL_BG_BOT, 0.2f));
+}
 
+// 「兼容设置」区块底板：渐变面板 + 极淡描边（设计稿 stroke #ffffff@0.05）。
+static void PaintCompatBackdrop(HDC mem, const RECT& rc)
+{
+    RECT area = GetCompatAreaRect();
+    if (area.bottom <= area.top) return;
+
+    GradientV(mem, area, COL_SECTION_TOP, COL_SECTION_BOT);
+
+    HPEN pen = CreatePen(PS_SOLID, 1, MixColor(COL_SECTION_TOP, RGB(255, 255, 255), 0.05f));
+    HGDIOBJ oldPen = SelectObject(mem, pen);
+    HGDIOBJ oldBr = SelectObject(mem, GetStockObject(NULL_BRUSH));
+    Rectangle(mem, area.left, area.top, area.right, area.bottom);
+    SelectObject(mem, oldBr);
+    SelectObject(mem, oldPen);
+    DeleteObject(pen);
 }

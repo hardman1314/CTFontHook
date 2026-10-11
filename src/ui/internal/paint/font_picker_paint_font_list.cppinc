@@ -1,19 +1,57 @@
+// 列表行第二行的西文字体名（面名 → 英文名），带缓存。
+static std::wstring GetFontSecondaryName(const std::wstring& face) {
+    if (face.empty()) return L"";
+    auto cached = g_fontEnglishNameCache.find(face);
+    if (cached != g_fontEnglishNameCache.end())
+        return cached->second;
+
+    std::wstring english;
+    LOGFONTW lf = {};
+    wcsncpy_s(lf.lfFaceName, face.c_str(), LF_FACESIZE - 1);
+    HFONT hFont = CreateFontIndirectW(&lf);
+    if (hFont) {
+        std::string ansi = Utils::GetFontEnglishName(hFont);
+        DeleteObject(hFont);
+        if (!ansi.empty()) {
+            int n = MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, NULL, 0);
+            if (n > 1) {
+                std::wstring wide(static_cast<size_t>(n - 1), L'\0');
+                MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, &wide[0], n);
+                english = wide;
+            }
+        }
+    }
+
+    if (g_fontEnglishNameCache.size() < 1024)
+        g_fontEnglishNameCache[face] = english;
+    return english;
+}
+
+// 行底板：把设计稿的半透明色叠到窗口底色上（批 3 接入海报后改为真 alpha 叠加）。
+static COLORREF RowOverColor(float alpha) { return MixColor(COL_BG_TOP, RGB(0x1b, 0x24, 0x33), alpha); }
+static COLORREF SelOverColor(float alpha) { return MixColor(COL_BG_TOP, RGB(0x28, 0x37, 0x50), alpha); }
+
 static void PaintFontList(HDC mem, const RECT& rc)
 {
-    // Font list.
-    int yStart = GetListTop();
     int itemCount = (int)g_filteredIndices.size();
-    int maxVisible = min(VISIBLE_ITEMS, itemCount - g_scrollOffset);
-    if (maxVisible < 0) maxVisible = 0;
+    int listTop = GetListTop();
+    int listBottom = GetListBottom();
+    if (listBottom <= listTop) return;
 
-    HFONT uiBadge = GetCachedPickerFont(L"Segoe UI", SF(10), 0, FW_BOLD, DEFAULT_CHARSET);
+    int savedDc = SaveDC(mem);
+    HRGN clipRgn = CreateRectRgn(0, listTop, rc.right, listBottom);
+    SelectClipRgn(mem, clipRgn);
 
+    HFONT uiSmall = GetCachedPickerFont(L"Microsoft YaHei", SF(8), 0, FW_NORMAL, DEFAULT_CHARSET);
     BYTE gameCs = GetGameCharset();
 
-    for (int i = 0; i < maxVisible; i++) {
-        int idx = g_scrollOffset + i;
-        int itemTop = yStart + i * ITEM_HEIGHT;
-        RECT itemRc = { 8, itemTop + 2, rc.right - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN * 2 - 4, itemTop + ITEM_HEIGHT - 2 };
+    // 多绘制一行，让最后一行被列表底部裁切（设计稿的「露出一截」效果）。
+    for (int visibleRow = 0; visibleRow <= VISIBLE_ITEMS; visibleRow++) {
+        int idx = g_scrollOffset + visibleRow;
+        if (idx >= itemCount) break;
+
+        RECT card = GetListRowRect(visibleRow);
+        if (card.top >= listBottom) break;
 
         bool selected = (idx == g_selectedIndex);
         bool hovered = (idx == g_hoveredIndex);
@@ -21,82 +59,87 @@ static void PaintFontList(HDC mem, const RECT& rc)
         bool isApplied = IsAppliedFont(idx);
         const std::wstring& fontName = g_allFonts[g_filteredIndices[idx]].name;
 
-        // Item background
         if (selected) {
-            // Selected: filled rounded rect + left accent bar + glow effect
-            RECT glowRc = { itemRc.left - 2, itemRc.top - 2, itemRc.right + 2, itemRc.bottom + 2 };
-            DrawRoundRectOutline(mem, glowRc, 12, COL_SELECTED_GLO);
-            FillRoundRect(mem, itemRc, 10, COL_SELECTED_BG);
-            RECT bar = { itemRc.left + 1, itemRc.top + 8, itemRc.left + 4, itemRc.bottom - 8 };
-            FillRoundRect(mem, bar, 2, COL_ACCENT);
-        } else if (hovered) {
-            FillRoundRect(mem, itemRc, 10, COL_HOVER_BG);
-            DrawRoundRectOutline(mem, itemRc, 10, MixColor(COL_HOVER_BG, COL_ACCENT, 0.3f));
+            COLORREF cols[3] = { SelOverColor(0.92f), SelOverColor(0.78f), SelOverColor(0.60f) };
+            float poss[3] = { 0.0f, 0.5f, 1.0f };
+            GradientHStops(mem, card, cols, poss, 3);
+            DrawRoundRectOutline(mem, card, 6, COL_SELECTED_GLO);
+            // 左侧强调竖条：竖向渐变
+            RECT bar = { card.left + 2, card.top + (card.bottom - card.top - SF(35)) / 2,
+                card.left + 5, card.top + (card.bottom - card.top - SF(35)) / 2 + SF(35) };
+            FillRoundRect(mem, bar, 2, COL_ACCENT_BAR_A);
+            GradientV(mem, bar, COL_ACCENT_BAR_A, COL_ACCENT_BAR_B);
+        } else {
+            COLORREF cols[2] = { RowOverColor(hovered ? 0.72f : 0.60f), RowOverColor(hovered ? 0.42f : 0.30f) };
+            float poss[2] = { 0.0f, 1.0f };
+            GradientHStops(mem, card, cols, poss, 2);
+            DrawRoundRectOutline(mem, card, 6,
+                MixColor(RowOverColor(0.5f), RGB(0xff, 0xff, 0xff), hovered ? 0.10f : 0.05f));
         }
 
-        int textLeft = itemRc.left + 14;
-        int badgeRight = itemRc.right - 8;
-
-        // 选中行右侧的「应用」按钮（该行已是当前字体时不显示，避免重复）。
         bool showApplyBtn = selected && !isApplied;
         RECT applyRc = {};
+        int rightLimit = card.right - SF(10);
         if (showApplyBtn) {
             applyRc = GetListRowActionButtonRect(idx);
-            badgeRight = applyRc.left - 6;
+            rightLimit = applyRc.left - SF(6);
         }
 
-        // Badges (from right to left)
+        // 徽章（右对齐，从右往左）——保留「✓ 已应用 / ☆ 最近」信息
+        if (isApplied || isRecent) {
+            SelectObject(mem, uiSmall);
+            const wchar_t* label = isApplied ? L"\x2713 \x5DF2\x5E94\x7528" : L"\x2606 \x6700\x8FD1";
+            SIZE sz; GetTextExtentPoint32W(mem, label, (int)wcslen(label), &sz);
+            int bw = sz.cx + SF(14);
+            RECT bdgRc = { rightLimit - bw, card.top + (card.bottom - card.top - SF(18)) / 2,
+                rightLimit, card.top + (card.bottom - card.top - SF(18)) / 2 + SF(18) };
+            FillRoundRect(mem, bdgRc, 9, isApplied ? COL_APPLIED_BG : COL_BADGE_BG);
+            SetTextColor(mem, isApplied ? COL_APPLIED_TEXT : COL_BADGE_TEXT);
+            DrawTextW(mem, label, -1, &bdgRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            rightLimit -= bw + SF(6);
+        }
+
+        int textLeft = card.left + SF(15);
+        int textRight = rightLimit - SF(4);
+
+        // 主名：用字体自身字形绘制
+        HFONT itemFont = GetCachedPickerFont(fontName, SF(13), 0, FW_NORMAL, gameCs);
+        HGDIOBJ oldFont = SelectObject(mem, itemFont);
+        SetTextColor(mem, COL_TEXT);
+        RECT nameRc = { textLeft, card.top + SF(9), textRight, card.top + SF(9) + SF(18) };
+        DrawTextW(mem, fontName.c_str(), -1, &nameRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+        // 副名：西文字体名（+「· 当前方案」）
+        std::wstring secondary = GetFontSecondaryName(fontName);
         if (isApplied) {
-            SelectObject(mem, uiBadge);
-            SIZE sz; GetTextExtentPoint32W(mem, L"✓ 已应用", 5, &sz);  // 已应用
-            int bw = sz.cx + 12;
-            RECT bdgRc = { badgeRight - bw, itemRc.top + (ITEM_HEIGHT - 20) / 2, badgeRight, itemRc.top + (ITEM_HEIGHT + 16) / 2 };
-            FillRoundRect(mem, bdgRc, 9, COL_APPLIED_BG);
-            SetTextColor(mem, COL_APPLIED_TEXT);
-            DrawTextW(mem, L"✓ 已应用", -1, &bdgRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);  // 已应用
-            badgeRight -= bw + 6;
+            if (!secondary.empty()) secondary += L" \xB7 ";
+            secondary += L"\x5F53\x524D\x65B9\x6848";  // 当前方案
         }
-        if (isRecent && !isApplied) {
-            SelectObject(mem, uiBadge);
-            SIZE sz; GetTextExtentPoint32W(mem, L"☆ 最近", 4, &sz);  // 最近
-            int bw = sz.cx + 12;
-            RECT bdgRc = { badgeRight - bw, itemRc.top + (ITEM_HEIGHT - 20) / 2, badgeRight, itemRc.top + (ITEM_HEIGHT + 16) / 2 };
-            FillRoundRect(mem, bdgRc, 9, COL_BADGE_BG);
-            SetTextColor(mem, COL_BADGE_TEXT);
-            DrawTextW(mem, L"☆ 最近", -1, &bdgRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);  // 最近
-            badgeRight -= bw + 6;
+        if (!secondary.empty()) {
+            SelectObject(mem, uiSmall);
+            SetTextColor(mem, isApplied ? COL_ACCENT : COL_TEXT_DIM);
+            RECT subRc = { textLeft, card.top + SF(30), textRight, card.bottom - SF(4) };
+            DrawTextW(mem, secondary.c_str(), -1, &subRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
         }
+        SelectObject(mem, oldFont);
 
-        // Font name in its own typeface (primary line)
-        HFONT itemFont = GetCachedPickerFont(fontName, SF(17), 0, FW_NORMAL, gameCs);
-        SelectObject(mem, itemFont);
-        SetTextColor(mem, selected ? COL_ACCENT : COL_TEXT);
-        RECT nameRc = { textLeft, itemRc.top, badgeRight - 4, itemRc.bottom };
-        DrawTextW(mem, fontName.c_str(), -1, &nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
-
-        // Separator
-        if (i < maxVisible - 1 && !selected) {
-            HPEN sepPen = CreatePen(PS_SOLID, 1, COL_SEPARATOR);
-            HGDIOBJ oldSep = SelectObject(mem, sepPen);
-            MoveToEx(mem, textLeft, itemRc.bottom + 1, NULL);
-            LineTo(mem, itemRc.right - 14, itemRc.bottom + 1);
-            SelectObject(mem, oldSep);
-            DeleteObject(sepPen);
-        }
-
-        // 应用按钮（最后绘制，压在名称之上）
+        // 应用按钮（选中行、且尚未应用）
         if (showApplyBtn) {
-            COLORREF fill = g_rowApplyHovered ? COL_ACCENT
-                : MixColor(COL_ACCENT, COL_SELECTED_BG, 0.35f);
-            FillRoundRect(mem, applyRc, 7, fill);
-            DrawRoundRectOutline(mem, applyRc, 7, COL_ACCENT);
-            HFONT btnFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
+            COLORREF fill = g_rowApplyHovered
+                ? MixColor(card.left ? SelOverColor(0.9f) : COL_SELECTED_BG, COL_ACCENT, 0.28f)
+                : MixColor(SelOverColor(0.85f), COL_ACCENT, 0.14f);
+            FillRoundRect(mem, applyRc, 5, fill);
+            DrawRoundRectOutline(mem, applyRc, 5, COL_ACCENT);
+            HFONT btnFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
             HGDIOBJ oldBtnFont = SelectObject(mem, btnFont);
-            SetTextColor(mem, RGB(255, 255, 255));
-            DrawTextW(mem, L"应用", -1, &applyRc,
-                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            SetTextColor(mem, COL_ACCENT);
+            DrawTextW(mem, L"\x2713 \x5E94\x7528", -1, &applyRc,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);  // ✓ 应用
             SelectObject(mem, oldBtnFont);
         }
     }
 
+    RestoreDC(mem, savedDc);
 }

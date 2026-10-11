@@ -1,45 +1,57 @@
 static void PaintPreviewPanel(HDC mem, const RECT& rc)
 {
-    // Preview panel.
     int prevTop = GetPreviewTop();
-    RECT prevBg = { 0, prevTop, rc.right, rc.bottom };
-    GradientV(mem, prevBg, COL_PREVIEW_TOP, COL_PREVIEW_BOT);
+    RECT panelRc = { 0, prevTop, rc.right, GetBottomBarTop() };
+    GradientV(mem, panelRc, COL_SECTION_TOP, COL_SECTION_BOT);
 
-    // Dialogue box style border
+    // 顶部分隔线
     {
-        RECT boxRc = { 10, prevTop + 10, rc.right - 10, rc.bottom - 10 };
-        DrawRoundRectOutline(mem, boxRc, 12, COL_BORDER);
-        // Inner thin line for dialogue box feel
-        RECT innerRc = { 12, prevTop + 12, rc.right - 12, rc.bottom - 12 };
-        DrawRoundRectOutline(mem, innerRc, 10, MixColor(COL_BORDER, COL_ACCENT, 0.2f));
-    }
-
-    // Top border + accent line
-    {
-        HPEN bp = CreatePen(PS_SOLID, 1, COL_BORDER);
-        HGDIOBJ op = SelectObject(mem, bp);
+        HPEN sep = CreatePen(PS_SOLID, 1, COL_SEPARATOR);
+        HGDIOBJ oldSep = SelectObject(mem, sep);
         MoveToEx(mem, 0, prevTop, NULL); LineTo(mem, rc.right, prevTop);
-        SelectObject(mem, op); DeleteObject(bp);
-    }
-    {
-        HPEN ap = CreatePen(PS_SOLID, 1, MixColor(COL_ACCENT, COL_PREVIEW_TOP, 0.6f));
-        HGDIOBJ op = SelectObject(mem, ap);
-        MoveToEx(mem, 0, prevTop + 1, NULL); LineTo(mem, rc.right, prevTop + 1);
-        SelectObject(mem, op); DeleteObject(ap);
+        SelectObject(mem, oldSep); DeleteObject(sep);
     }
 
-    // Decorative sparkle in preview corner
-    DrawSparkle(mem, rc.right - 24, prevTop + 14, 3, MixColor(COL_ACCENT2, COL_PREVIEW_TOP, 0.5f));
-    DrawPetal(mem, rc.right - 42, prevTop + 20, 3, 4, MixColor(COL_ACCENT, COL_PREVIEW_TOP, 0.6f));
-    DrawPetal(mem, 24, rc.bottom - 20, 4, 5, COL_ACCENT3);
+    // 标题行：文字预览 + A− / 22px / A+
+    {
+        HFONT titleFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_BOLD, DEFAULT_CHARSET);
+        HGDIOBJ oldFont = SelectObject(mem, titleFont);
+        SetTextColor(mem, COL_TEXT_LABEL);
+        RECT titleRc = { SF(13), prevTop + SF(4), rc.right, prevTop + SF(22) };
+        DrawTextW(mem, L"\x6587\x5B57\x9884\x89C8", -1, &titleRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE);  // 文字预览
+
+        RECT minusRc = GetPreviewFontMinusRect();
+        SetTextColor(mem, g_previewFontMinusHovered ? COL_ACCENT : COL_TEXT_METRIC);
+        DrawTextW(mem, L"A\x2212", -1, &minusRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        wchar_t valBuf[16];
+        wsprintfW(valBuf, L"%dpx", g_previewFontPx);
+        RECT valRc = GetPreviewFontValueRect();
+        SetTextColor(mem, COL_TEXT_DIM);
+        DrawTextW(mem, valBuf, -1, &valRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        RECT plusRc = GetPreviewFontPlusRect();
+        SetTextColor(mem, g_previewFontPlusHovered ? COL_ACCENT : COL_TEXT_METRIC);
+        DrawTextW(mem, L"A+", -1, &plusRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        SelectObject(mem, oldFont);
+    }
+
+    // 预览框：渐变底 + 辉光描边
+    RECT boxRc = GetPreviewBoxRect();
+    {
+        GradientV(mem, boxRc, COL_PREVIEW_TOP, COL_PREVIEW_BOT);
+        DrawRoundRectOutline(mem, boxRc, 8, COL_PREVIEW_GLOW);
+    }
 
     BYTE gameCs = GetGameCharset();
     int itemCount = (int)g_filteredIndices.size();
     if (g_selectedIndex >= 0 && g_selectedIndex < itemCount) {
         const std::wstring& fontName = g_allFonts[g_filteredIndices[g_selectedIndex]].name;
 
-        // Full preview text
-        int previewHeight = SF(28);
+        // 样例文字（字号由预览区 A−/A+ 控制，基准 22px；沿用字形微调缩放）
+        int previewHeight = SF(g_previewFontPx);
         if (Config::EnableFontHeightScale)
             previewHeight = max(SF(12), (int)(previewHeight * Config::FontHeightScale + 0.5f));
         int previewWidth = 0;
@@ -51,8 +63,9 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
         int oldCharExtra = 0x80000000;
         if (Config::EnableFontCharSpacing && Config::FontCharSpacing != 0)
             oldCharExtra = SetTextCharacterExtra(mem, Config::FontCharSpacing);
-        SetTextColor(mem, COL_TEXT);
-        RECT contentRc = { 24, prevTop + 24, rc.right - 24, rc.bottom - 32 };
+        SetTextColor(mem, COL_TEXT_PREVIEW);
+        RECT contentRc = { boxRc.left + SF(14), boxRc.top + SF(8),
+            boxRc.right - SF(14), boxRc.bottom - SF(4) };
         TEXTMETRICW previewTm = {};
         GetTextMetricsW(mem, &previewTm);
         int previewLineStep = max(1, (int)(previewTm.tmHeight + previewTm.tmExternalLeading));
@@ -60,10 +73,10 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
             previewLineStep = max(1, (int)previewTm.tmHeight + Config::FontLineSpacing);
         std::wstring sampleLine = Config::PreviewTextW[0] != L'\0'
             ? std::wstring(Config::PreviewTextW)
-            : std::wstring(L"\x300c\x6d4b\x8bd5\x6587\x5b57 Sample Text\x300d");
+            : std::wstring(L"\x300C\x6D4B\x8BD5\x6587\x5B57 Sample Text\x300D");
         const wchar_t* previewLines[] = {
             sampleLine.c_str(),
-            L"\x3042\x3044\x3046\x3048\x304a 0123456789"
+            L"\x3042\x3044\x3046\x3048\x304A 0123456789"
         };
         int lineY = contentRc.top;
         for (int i = 0; i < 2 && lineY < contentRc.bottom; ++i) {
@@ -74,77 +87,66 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
             SetTextCharacterExtra(mem, oldCharExtra);
         SelectObject(mem, oldPreviewFont);
 
-        // 样例区操作提示：悬停高亮，引导点击自定义第 1 行样例文字。
+        // 预览框左下角：检测/选择信息
         {
-            HFONT sampleHintFont = GetCachedPickerFont(L"Segoe UI", SF(10), 0, FW_NORMAL, DEFAULT_CHARSET);
-            HGDIOBJ oldSampleHintFont = SelectObject(mem, sampleHintFont);
-            SetTextColor(mem, g_previewSampleHovered ? COL_ACCENT : COL_TEXT_HINT);
-            RECT sampleHintRc = { contentRc.left, contentRc.top + previewLineStep,
-                contentRc.right, contentRc.top + previewLineStep * 2 };
-            DrawTextW(mem, L"点击此处可编辑样例文字", -1, &sampleHintRc,
-                DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
-            SelectObject(mem, oldSampleHintFont);
-        }
+            HFONT infoFont = GetCachedPickerFont(L"Microsoft YaHei", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
+            HGDIOBJ oldInfoFont = SelectObject(mem, infoFont);
+            SetTextColor(mem, COL_TEXT_HINT);
 
-        // Bottom info line
-        HFONT infoFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
-        HGDIOBJ oldInfoFont = SelectObject(mem, infoFont);
-
-        SetTextColor(mem, COL_TEXT_HINT);
-        RECT infoRc = { 18, rc.bottom - 22, rc.right / 2 + 60, rc.bottom - 4 };
-        wchar_t infoBuf[256];
-        
-        // Map detected charset to name
-        const wchar_t* detName = L"未知"; // 未知
-        for(int i=0; i<g_charsetCount; i++) {
-            if(g_charsets[i].value == Config::DetectedCharset) {
-                detName = g_charsets[i].label;
-                break;
+            const wchar_t* detName = L"\x672A\x77E5";  // 未知
+            for (int i = 0; i < g_charsetCount; i++) {
+                if (g_charsets[i].value == Config::DetectedCharset) {
+                    detName = g_charsets[i].label;
+                    break;
+                }
             }
+            wchar_t infoBuf[256];
+            wsprintfW(infoBuf, L"\x6E38\x620F: %s (%d)  |  \x9009\x62E9: %s (%d)  |  %d/%d",
+                detName, (int)Config::DetectedCharset,
+                g_charsets[g_selectedCharset].label, (int)g_charsets[g_selectedCharset].value,
+                g_selectedIndex + 1, itemCount);
+            RECT infoRc = { boxRc.left + SF(14), boxRc.bottom - SF(13),
+                boxRc.right - SF(14), boxRc.bottom - SF(3) };
+            DrawTextW(mem, infoBuf, -1, &infoRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+            SelectObject(mem, oldInfoFont);
         }
-
-        wsprintfW(infoBuf, L"游戏: %s (%d)  |  选择: %s (%d)  |  %d/%d", 
-            detName, (int)Config::DetectedCharset,
-            g_charsets[g_selectedCharset].label, (int)g_charsets[g_selectedCharset].value,
-            g_selectedIndex + 1, itemCount); // 游戏: ... | 选择: ...
-        DrawTextW(mem, infoBuf, -1, &infoRc, DT_LEFT | DT_SINGLELINE);
-
-        SelectObject(mem, oldInfoFont);
     }
 
-    // 「当前字体」提示（预览区右下角）：单击可跳到当前已应用的字体。
+    // 预览底行：左侧「点击文字编辑预览」（可点击进入行内编辑），右侧当前字体名 + 下拉箭头。
     {
-        RECT hintRc = GetCurrentFontHintRect();
-        COLORREF hintFill = g_currentFontHintHovered
-            ? MixColor(COL_ACCENT, COL_PREVIEW_BOT, 0.25f)
-            : MixColor(COL_PREVIEW_BOT, COL_PREVIEW_TOP, 0.35f);
-        FillRoundRect(mem, hintRc, 6, hintFill);
-        DrawRoundRectOutline(mem, hintRc, 6,
-            g_currentFontHintHovered ? COL_ACCENT : COL_BORDER);
+        HFONT footFont = GetCachedPickerFont(L"Microsoft YaHei", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
+        HGDIOBJ oldFootFont = SelectObject(mem, footFont);
+        SetTextColor(mem, g_previewSampleHovered ? COL_ACCENT : COL_TEXT_FAINT);
+        RECT editHintRc = { SF(13), GetPreviewBottomRowTop(), rc.right / 2, GetBottomBarTop() };
+        DrawTextW(mem, L"\x70B9\x51FB\x6587\x5B57\x7F16\x8F91\x9884\x89C8", -1, &editHintRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);  // 点击文字编辑预览
+        SelectObject(mem, oldFootFont);
 
-        HFONT hintFont = GetCachedPickerFont(L"Segoe UI", SF(11), 0, FW_NORMAL, DEFAULT_CHARSET);
+        HFONT hintFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
         HGDIOBJ oldHintFont = SelectObject(mem, hintFont);
-        SetTextColor(mem, g_appliedFont.empty() ? COL_TEXT_HINT : COL_ACCENT);
-        std::wstring hintText = L"当前字体：";
-        hintText += g_appliedFont.empty() ? L"（未应用）" : g_appliedFont;
-        RECT hintTextRc = { hintRc.left + 8, hintRc.top, hintRc.right - 8, hintRc.bottom };
-        DrawTextW(mem, hintText.c_str(), -1, &hintTextRc,
+        SetTextColor(mem, g_appliedFont.empty() ? COL_TEXT_HINT : COL_TEXT_DIM);
+        std::wstring hintText = g_appliedFont.empty()
+            ? std::wstring(L"\xFF08\x672A\x5E94\x7528\xFF09")   // （未应用）
+            : g_appliedFont;
+        hintText += L"  \x2304";
+        RECT hintRc = GetCurrentFontHintRect();
+        DrawTextW(mem, hintText.c_str(), -1, &hintRc,
             DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
         SelectObject(mem, oldHintFont);
     }
 
     // P1-2：应用字体后的一次性提示条（置于最上层，几秒后自动消失）。
     if (!g_applyToastText.empty()) {
-        RECT toastRc = { 16, prevTop + 6, rc.right - 16, prevTop + 6 + SF(28) };
+        RECT toastRc = { SF(16), prevTop + SF(6), rc.right - SF(16), prevTop + SF(6) + SF(28) };
         COLORREF toastAccent = g_applyToastError ? COL_WARN : COL_ACCENT;
-        FillRoundRect(mem, toastRc, 8, MixColor(toastAccent, COL_PREVIEW_TOP, 0.2f));
+        FillRoundRect(mem, toastRc, 8, MixColor(toastAccent, COL_SECTION_TOP, 0.25f));
         DrawRoundRectOutline(mem, toastRc, 8, toastAccent);
-        HFONT toastFont = GetCachedPickerFont(L"Segoe UI", SF(12), 0, FW_BOLD, DEFAULT_CHARSET);
+        HFONT toastFont = GetCachedPickerFont(L"Microsoft YaHei", SF(11), 0, FW_BOLD, DEFAULT_CHARSET);
         HGDIOBJ oldToastFont = SelectObject(mem, toastFont);
         SetTextColor(mem, RGB(255, 255, 255));
         DrawTextW(mem, g_applyToastText.c_str(), -1, &toastRc,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
         SelectObject(mem, oldToastFont);
     }
-
 }

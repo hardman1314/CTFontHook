@@ -2,14 +2,7 @@ static void PaintWindowBorder(HDC mem, const RECT& rc)
 {
     if (rc.right <= 1 || rc.bottom <= 1) return;
 
-    HPEN borderPen = CreatePen(PS_SOLID, 1, COL_BORDER);
-    HGDIOBJ oldPen = SelectObject(mem, borderPen);
-    MoveToEx(mem, 0, 0, NULL);
-    LineTo(mem, rc.right - 1, 0);
-    LineTo(mem, rc.right - 1, rc.bottom - 1);
-    LineTo(mem, 0, rc.bottom - 1);
-    LineTo(mem, 0, 0);
-    SetPixel(mem, rc.right - 1, rc.bottom - 1, COL_BORDER);
-    SelectObject(mem, oldPen);
-    DeleteObject(borderPen);
+    // 设计稿圆角 11：以 1px 圆角描边贴合窗口四周（无原生边框）。
+    RECT borderRc = { 0, 0, rc.right - 1, rc.bottom - 1 };
+    DrawRoundRectOutline(mem, borderRc, SF(CORNER_RADIUS) * 2, COL_BORDER);
 }

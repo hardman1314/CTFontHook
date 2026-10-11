@@ -287,6 +287,14 @@ static bool g_trackingMouseLeave = false;
 static int g_listWheelRemainder = 0;
 static int g_charsetWheelRemainder = 0;
 
+// P1-1：字符集是否已确定（用户手动点过，或已按检测结果自动预选过一次）。
+static bool g_charsetSelectionSet = false;
+
+// P1-2：应用字体后的一次性提示（几秒后自动消失）。
+static const UINT_PTR PICKER_APPLY_TOAST_TIMER_ID = 0x5347;
+static const UINT APPLY_TOAST_MS = 4000;
+static std::wstring g_applyToastText;
+
 static HDC g_paintMemDC = NULL;
 static HBITMAP g_paintBitmap = NULL;
 static HBITMAP g_paintOldBitmap = NULL;

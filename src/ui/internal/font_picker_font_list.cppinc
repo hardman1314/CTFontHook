@@ -805,4 +805,12 @@ static void ApplySelectedFont() {
     }
     Utils::Breadcrumb("ApplySelectedFont end name='%S' total=%lums applied='%S'",
         name.c_str(), totalElapsed, g_appliedFont.c_str());
+
+    // P1-2：应用后一次性提示（部分游戏对象不会自动刷新，需重启游戏），几秒后自动消失。
+    g_applyToastText = L"已应用「" + name + L"」；若游戏内未刷新，请重启游戏。";
+    if (g_hWnd && IsWindow(g_hWnd)) {
+        KillTimer(g_hWnd, PICKER_APPLY_TOAST_TIMER_ID);
+        SetTimer(g_hWnd, PICKER_APPLY_TOAST_TIMER_ID, APPLY_TOAST_MS, NULL);
+        InvalidateUiRect(g_hWnd, GetPreviewAreaRect(), 1);
+    }
 }

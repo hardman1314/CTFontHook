@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-10-11　体验重构：字符集智能预选 + 应用后重启提示（任务 C：P1-1 / P1-2）
+
+- **任务**：P1-1 按游戏检测到的编码自动预选字符集；P1-2 应用字体后提示「可能需要重启游戏」。
+- **改动文件**：
+  - `state/font_picker_state.cppinc`：新增 `g_charsetSelectionSet`；新增提示定时器常量与 `g_applyToastText`。
+  - `input/font_picker_wndproc.cppinc`：新增 `PreselectCharsetFromDetection()`（显示选择器时预选）；
+    `HandleCharsetClick` 置位「用户已选」；`WM_TIMER` 处理提示定时器。
+  - `font_picker_font_list.cppinc`：`ApplySelectedFont()` 末尾设置提示文案 + 启动一次性定时器 + 重绘预览。
+  - `paint/font_picker_paint_preview.cppinc`：预览区顶部绘制提示条（最上层）。
+- **做法**：P1-1 只在「用户未指定字符集 + 检测已就绪」时自动预选一次，之后完全尊重用户；
+  P1-2 用 4 秒一次性定时器（`WM_TIMER`）自动清除提示。
+- **验证**（实测）：`scripts\1-一键测试.bat` `[1/4]`~`[4/4]` 全通过；`git status` 仅计划内文件。
+- **遗留**：未做真机验证（预选是否命中真实编码、提示条观感）。
+
+---
+
 ## 2026-10-11　安装器：扩展为多游戏字体管理器（任务 B2）
 
 - **任务**：用户有「多个游戏都要改字体」的需求，把安装器从单游戏工具升级为多游戏集中管理。

@@ -118,4 +118,17 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
         SelectObject(mem, oldHintFont);
     }
 
+    // P1-2：应用字体后的一次性提示条（置于最上层，几秒后自动消失）。
+    if (!g_applyToastText.empty()) {
+        RECT toastRc = { 16, prevTop + 6, rc.right - 16, prevTop + 6 + SF(28) };
+        FillRoundRect(mem, toastRc, 8, MixColor(COL_ACCENT, COL_PREVIEW_TOP, 0.2f));
+        DrawRoundRectOutline(mem, toastRc, 8, COL_ACCENT);
+        HFONT toastFont = GetCachedPickerFont(L"Segoe UI", SF(12), 0, FW_BOLD, DEFAULT_CHARSET);
+        HGDIOBJ oldToastFont = SelectObject(mem, toastFont);
+        SetTextColor(mem, RGB(255, 255, 255));
+        DrawTextW(mem, g_applyToastText.c_str(), -1, &toastRc,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+        SelectObject(mem, oldToastFont);
+    }
+
 }

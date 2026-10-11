@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-10-11　真机反馈修复：海报背景跟随窗口缩放
+
+- **任务**：主人反馈「拖拽拉缩窗口，背景（海报）没跟随整体拉缩」——附两张大/小窗口截图。
+- **现象**：拖大窗口后，列表区右侧/下方露出无海报的空白（海报仍是固定宽度，未铺满列表区）。
+- **根因（已看代码确认）**：`src/ui/internal/paint/font_picker_paint_list_bg.cppinc` 的
+  `DrawListPoster` 把缩放帧尺寸**写死为设计稿常量** `frameW = 470; frameH = 410;`：
+  海报资源本身是 343×412，按 470×410 做 CROP 后恒得约 470×565 的固定输出尺寸，
+  **与窗口/列表区实时尺寸无关** → 窗口放大后海报不跟着放大、露底。
+- **改法（3 行，最小变更）**：同一函数内把帧尺寸改为**列表区实时尺寸**：
+  ```cpp
+  const int frameW = listRc.right - listRc.left;
+  const int frameH = listRc.bottom - listRc.top;
+  if (frameW <= 0 || frameH <= 0) return;
+  ```
+  CROP 覆盖算法（`s = max(sx, sy)`）与锚点（列表区左上）保持不变，故仅为「帧尺寸取实时值」。
+- **改动文件**（1 个，在批准的计划内）：`src/ui/internal/paint/font_picker_paint_list_bg.cppinc`
+  （`DrawListPoster`，5 增 3 删）。
+- **明确不改**：`PaintFontList` 的裁剪区（`font_picker_paint_font_list.cppinc:34`，仍裁到列表带、
+  传实时 `listRc`）；CROP 覆盖算法与左上锚点；海报资源 `src/res/list_bg.png`；行卡片/圆角等其余绘制。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 Release / Win32 Release / 安装器 / 导出校验）；
+  Win32 DLL `938496 → 590848`。
+- **偏差 / 限制**：⚠️ **未做真机验证** —— 需主人拖动窗口缩放，确认海报跟随放大缩小且右侧不再露底。
+  缩放语义为 **CROP 覆盖**（始终铺满列表区、可能裁掉海报边缘），锚点为**列表区左上**；
+  若希望角色居中或改「完整显示不裁剪（CONTAIN）」，可只调锚点/缩放策略（`DrawListPoster` 内可调）。
+
+---
+
 ## 2026-10-11　开源前准备：版权署名 / 第三方声明 / 换行锁定 / 忽略设计图
 
 - **任务**：为新建 GitHub 公开仓库（`hardman1314/CTFontHook`，Public）做发布前清理。

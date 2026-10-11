@@ -182,11 +182,13 @@ static void BlendRowCard(HDC mem, const RECT& card, int style) {
     DeleteDC(dc);
 }
 
-// 海报按设计稿 Text 帧（470×410，CROP 覆盖）缩放，锚定列表区左上；超出部分被列表裁剪。
+// 海报按「当前列表区实际尺寸」等比 CROP 覆盖，锚定列表区左上；超出部分被列表裁剪。
+// 帧尺寸必须取实时列表区：原先写死设计稿常量 470×410，窗口缩放时海报恒定 470px 宽而不跟随。
 static void DrawListPoster(HDC mem, const RECT& listRc) {
     if (!g_listBgBitmap || g_listBgW <= 0 || g_listBgH <= 0) return;
-    const int frameW = 470;
-    const int frameH = 410;
+    const int frameW = listRc.right - listRc.left;
+    const int frameH = listRc.bottom - listRc.top;
+    if (frameW <= 0 || frameH <= 0) return;
     float sx = (float)frameW / (float)g_listBgW;
     float sy = (float)frameH / (float)g_listBgH;
     float s = (sx > sy) ? sx : sy;

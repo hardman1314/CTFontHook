@@ -6,18 +6,31 @@ static void CreatePickerWindow() {
     wc.lpszClassName = WND_CLASS;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.style = CS_DBLCLKS;
+    wc.hIcon = (HICON)LoadImageW(g_hModule,
+        MAKEINTRESOURCEW(APP_ICON_RESOURCE_ID), IMAGE_ICON, 0, 0,
+        LR_DEFAULTSIZE | LR_SHARED);
+    wc.hIconSm = (HICON)LoadImageW(g_hModule,
+        MAKEINTRESOURCEW(APP_ICON_RESOURCE_ID), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
     RegisterClassExW(&wc);
-
-    RecalcLayout();
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
 
-    // 小屏保护：初始窗口不超过屏幕可视区，避免一开窗就超出边界。
-    if (WINDOW_WIDTH > screenW - 40)
-        WINDOW_WIDTH = max(MIN_WIDTH, screenW - 40);
-    if (WINDOW_HEIGHT > screenH - 80)
-        WINDOW_HEIGHT = max(MIN_HEIGHT, screenH - 80);
+    // 等比初始尺寸：默认 g_uiScale(1.25×)，屏幕放不下则整体缩小，
+    // 始终保持设计稿 410×724 的比例（拖拽缩放与 Ctrl+滚轮共用同一 g_uiScale）。
+    float s = g_uiScale;
+    if (DESIGN_BASE_WIDTH * s > screenW - 40)
+        s = (float)(screenW - 40) / DESIGN_BASE_WIDTH;
+    if (DESIGN_BASE_HEIGHT * s > screenH - 80)
+        s = (float)(screenH - 80) / DESIGN_BASE_HEIGHT;
+    if (s < UI_SCALE_MIN) s = UI_SCALE_MIN;
+    if (s > UI_SCALE_MAX) s = UI_SCALE_MAX;
+    g_uiScale = s;
+    WINDOW_WIDTH = (int)(DESIGN_BASE_WIDTH * s + 0.5f);
+    WINDOW_HEIGHT = (int)(DESIGN_BASE_HEIGHT * s + 0.5f);
+
+    RecalcLayout();
 
     // Keep standard top-level window semantics for DWM transitions. The
     // window procedure and DWM policy suppress all native frame rendering.
@@ -31,6 +44,13 @@ static void CreatePickerWindow() {
         NULL, NULL, g_hModule, NULL);
 
     if (!g_hWnd) return;
+
+    // 任务栏/Alt+Tab 大图标（类图标对小图标足够，大图标显式设置以保证清晰度）。
+    SendMessageW(g_hWnd, WM_SETICON, ICON_BIG, (LPARAM)LoadImageW(g_hModule,
+        MAKEINTRESOURCEW(APP_ICON_RESOURCE_ID), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+    if (wc.hIconSm)
+        SendMessageW(g_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)wc.hIconSm);
 
     DWMNCRENDERINGPOLICY ncPolicy = DWMNCRP_DISABLED;
     HRESULT ncResult = DwmSetWindowAttribute(g_hWnd,

@@ -179,7 +179,7 @@ static const int HINT_HEIGHT      = 24;   // 列表下方提示行
 static const int SPOOF_HEIGHT     = 40;   // 兼容设置：伪装
 static const int TEXTSUB_HEIGHT   = 34;   // 兼容设置：文字映射 / 转码
 static const int METRICS_HEIGHT   = 150;  // 兼容设置：字形微调
-static const int PREVIEW_HEIGHT   = 136;  // 文字预览区
+static const int PREVIEW_HEIGHT   = 164;  // 文字预览区（+28：压缩列表区、放大预览展示区）
 static const int BOTTOM_BAR_HEIGHT = 29;  // 底部状态栏
 static const int CORNER_RADIUS    = 11;   // 窗口圆角半径
 static const int TOP_BLOCK_PAD_TOP = 9;   // 顶层面板整体上留白
@@ -220,10 +220,12 @@ enum MetricValueKind {
     METRIC_VALUE_WEIGHT,
 };
 
-// Resize support
-static const int MIN_WIDTH        = 475;
-static const int MIN_HEIGHT       = 825;
+// Resize support（窗口按设计稿 410×724 等比缩放，故最小尺寸同比例）
+static const int MIN_WIDTH        = 340;
+static const int MIN_HEIGHT       = 600;
 static const int RESIZE_BORDER    = 6;   // pixels from edge for resize hit-test
+static const float DESIGN_BASE_WIDTH  = 410.0f;  // 设计稿基准宽（等比缩放比例分母）
+static const float DESIGN_BASE_HEIGHT = 724.0f;  // 设计稿基准高
 static const wchar_t* WND_CLASS = L"FontPickerOverlay";
 
 // -----------------------------------------------------------------------------
@@ -315,6 +317,7 @@ static int SF(int base) { return (int)(base * g_uiScale + 0.5f); }
 static bool g_scrollbarHovered = false;
 static bool g_rowApplyHovered = false;  // 选中行「应用」按钮悬停
 static bool g_currentFontHintHovered = false;  // 预览区「当前字体」提示悬停
+static bool g_bottomAppliedHovered = false;    // 底栏「当前方案」提示悬停（可点击定位）
 static bool g_previewSampleHovered = false;    // 预览区样例文字悬停
 
 // 预览字号：仅本次会话有效，不写入配置（设计稿默认 22px）。
@@ -449,6 +452,8 @@ static bool EnsurePaintBuffer(HDC hdc, int width, int height) {
 
 // 列表区海报背景（设计稿 Text.png 以 RCDATA 内嵌；缺失时回退纯渐变）。
 static const int LIST_BG_RESOURCE_ID = 101;
+// 窗口/任务栏图标（资源见 src/CTFontHook.rc 的 2001 ICON，源文件 src/res/app.ico）。
+static const int APP_ICON_RESOURCE_ID = 2001;
 static HBITMAP g_listBgBitmap = NULL;
 static int g_listBgW = 0;
 static int g_listBgH = 0;

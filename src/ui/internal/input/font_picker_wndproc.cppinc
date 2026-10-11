@@ -137,6 +137,21 @@ static bool HandleCurrentFontHintClick(HWND hWnd, int x, int y) {
     return true;
 }
 
+// 点击底栏「● 当前方案：<字体>」→ 定位到列表中的该字体（与预览页脚提示同一行为）。
+static bool HandleBottomAppliedClick(HWND hWnd, int x, int y) {
+    if (!PointInRect(x, y, GetBottomBarAppliedRect()))
+        return false;
+    if (g_appliedFont.empty())
+        return true;
+    if (FocusAppliedFontInList()) {
+        g_rowApplyHovered = false;
+        InvalidateListAndScrollbar(hWnd);
+        InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+        InvalidateUiRect(hWnd, GetBottomBarRect(), 1);
+    }
+    return true;
+}
+
 // 点击预览区样例文字 → 行内编辑自定义第 1 行样例。
 static bool HandlePreviewSampleClick(HWND hWnd, int x, int y) {
     if (!PointInRect(x, y, GetPreviewSampleRect()))
@@ -290,6 +305,23 @@ static bool HandleScrollbarClick(HWND hWnd, int x, int y) {
     return false;
 }
 
+// 按当前 g_uiScale 把窗口调整为设计稿等比尺寸（拖拽缩放与 Ctrl+滚轮共用同一比例）。
+static void SizeWindowForUiScale(HWND hWnd) {
+    int w = (int)(DESIGN_BASE_WIDTH * g_uiScale + 0.5f);
+    int h = (int)(DESIGN_BASE_HEIGHT * g_uiScale + 0.5f);
+    RECT wr = {};
+    if (!GetWindowRect(hWnd, &wr)) return;
+    int x = wr.left, y = wr.top;
+    RECT wa = {};
+    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0)) {
+        if (x + w > wa.right) x = max(wa.left, wa.right - w);
+        if (y + h > wa.bottom) y = max(wa.top, wa.bottom - h);
+        if (x < wa.left) x = wa.left;
+        if (y < wa.top) y = wa.top;
+    }
+    SetWindowPos(hWnd, NULL, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
 
@@ -423,6 +455,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (newScale > UI_SCALE_MAX) newScale = UI_SCALE_MAX;
                 if (newScale != g_uiScale) {
                     g_uiScale = newScale;
+                    // 与拖拽缩放一致：窗口随之等比变化（随后 WM_SIZE 会重新布局）。
+                    SizeWindowForUiScale(hWnd);
                     RecalcLayout();
                     ClampScroll();
                     g_guideContentHeight = 0;
@@ -632,6 +666,16 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
 
+        // 底栏「当前方案」提示 hover（可点击定位）
+        {
+            bool newBottomHover = !g_appliedFont.empty() &&
+                PointInRect(x, y, GetBottomBarAppliedRect());
+            if (newBottomHover != g_bottomAppliedHovered) {
+                g_bottomAppliedHovered = newBottomHover;
+                InvalidateUiRect(hWnd, GetBottomBarRect(), 1);
+            }
+        }
+
         // 预览样例文字 hover
         {
             bool newSampleHover = PointInRect(x, y, GetPreviewSampleRect());
@@ -682,6 +726,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             || g_textSubstitutionHovered || g_textSubstitutionModeHovered
             || g_codepageRedirectHovered || g_codepageRedirectPresetHovered
             || g_metricHovered != METRIC_NONE || g_rowApplyHovered || g_currentFontHintHovered
+            || g_bottomAppliedHovered
             || g_previewSampleHovered || g_previewFontMinusHovered || g_previewFontPlusHovered) {
             int oldHovered = g_hoveredIndex;
             bool dirtyTitle = g_closeHovered || g_minHovered || g_headerPillHovered;
@@ -693,6 +738,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             bool dirtyMetrics = g_metricHovered != METRIC_NONE;
             bool dirtyPreview = g_currentFontHintHovered || g_previewSampleHovered ||
                 g_previewFontMinusHovered || g_previewFontPlusHovered;
+            bool dirtyBottom = g_bottomAppliedHovered;
             bool dirtyRowApply = g_rowApplyHovered;
             bool dirtyGuide = ClearGuidePageHoverState();
             g_hoveredIndex = -1; g_closeHovered = false; g_minHovered = false; g_scrollbarHovered = false;
@@ -708,6 +754,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_previewSampleHovered = false;
             g_previewFontMinusHovered = false;
             g_previewFontPlusHovered = false;
+            g_bottomAppliedHovered = false;
             if (dirtyTitle) InvalidateUiRect(hWnd, GetTitleAreaRect(), 1);
             if (dirtyScrollbar) InvalidateUiRect(hWnd, GetScrollbarAreaRect(), 2);
             if (dirtyCharset) InvalidateUiRect(hWnd, GetCharsetAreaRect(), 1);
@@ -715,6 +762,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (dirtyTextSub) InvalidateUiRect(hWnd, GetTextSubAreaRect(), 1);
             if (dirtyMetrics) InvalidateUiRect(hWnd, GetMetricsAreaRect(), 1);
             if (dirtyPreview) InvalidateUiRect(hWnd, GetPreviewAreaRect(), 1);
+            if (dirtyBottom) InvalidateUiRect(hWnd, GetBottomBarRect(), 1);
             if (dirtyRowApply) InvalidateListItem(hWnd, g_selectedIndex);
             if (dirtyGuide) {
                 InvalidateUiRect(hWnd, GetGuideSectionTabsRect(), 1);
@@ -752,7 +800,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             HandleRowApplyClick(hWnd, x, y) ||
             HandlePreviewFontButtonClick(hWnd, x, y) ||
             HandlePreviewSampleClick(hWnd, x, y) ||
-            HandleCurrentFontHintClick(hWnd, x, y)) {
+            HandleCurrentFontHintClick(hWnd, x, y) ||
+            HandleBottomAppliedClick(hWnd, x, y)) {
             return 0;
         }
 
@@ -817,6 +866,30 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         break;
 
+    // 拖拽缩放：锁定设计稿 410×724 比例，拖动任一方向都等比缩放整个界面。
+    case WM_SIZING: {
+        RECT* pr = (RECT*)lParam;
+        int w = pr->right - pr->left;
+        int h = pr->bottom - pr->top;
+        if (wParam == WMSZ_TOP || wParam == WMSZ_BOTTOM)
+            w = (int)(h * DESIGN_BASE_WIDTH / DESIGN_BASE_HEIGHT + 0.5f);
+        else
+            h = (int)(w * DESIGN_BASE_HEIGHT / DESIGN_BASE_WIDTH + 0.5f);
+        switch (wParam) {
+        case WMSZ_LEFT: case WMSZ_TOPLEFT: case WMSZ_BOTTOMLEFT:
+            pr->left = pr->right - w; break;
+        case WMSZ_RIGHT: case WMSZ_TOPRIGHT: case WMSZ_BOTTOMRIGHT:
+            pr->right = pr->left + w; break;
+        }
+        switch (wParam) {
+        case WMSZ_TOP: case WMSZ_TOPLEFT: case WMSZ_TOPRIGHT:
+            pr->top = pr->bottom - h; break;
+        case WMSZ_BOTTOM: case WMSZ_BOTTOMLEFT: case WMSZ_BOTTOMRIGHT:
+            pr->bottom = pr->top + h; break;
+        }
+        return TRUE;
+    }
+
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
         mmi->ptMinTrackSize.x = MIN_WIDTH;
@@ -838,6 +911,13 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         GetClientRect(hWnd, &cr);
         WINDOW_WIDTH = cr.right;
         WINDOW_HEIGHT = cr.bottom;
+        // 窗口宽度决定整体缩放比例：内容（文字/控件/行高）随之等比放大或缩小。
+        if (WINDOW_WIDTH > 0) {
+            float newScale = (float)WINDOW_WIDTH / DESIGN_BASE_WIDTH;
+            if (newScale < UI_SCALE_MIN) newScale = UI_SCALE_MIN;
+            if (newScale > UI_SCALE_MAX) newScale = UI_SCALE_MAX;
+            g_uiScale = newScale;
+        }
         ReleasePaintBuffer();
         RecalcLayout();
         ClampScroll();

@@ -31,7 +31,7 @@ static bool PointInRect(int x, int y, const RECT& rc);
 static RECT GetTitleAreaRect() { return MakeUiRect(0, 0, WINDOW_WIDTH, TITLE_HEIGHT); }
 
 // 标题栏「指南 / 字体」页签药丸（设计稿只有一个页签按钮）。
-static RECT GetHeaderPillRect() { return MakeUiRect(108, 5, 150, TITLE_HEIGHT - 5); }
+static RECT GetHeaderPillRect() { return MakeUiRect(SF(108), SF(5), SF(150), TITLE_HEIGHT - SF(5)); }
 
 static bool HeaderPillHitTest(int x, int y) {
     return PointInRect(x, y, GetHeaderPillRect());
@@ -79,6 +79,11 @@ static RECT GetMetricsAreaRect() {
 static RECT GetPreviewAreaRect() { return MakeUiRect(0, GetPreviewTop(), WINDOW_WIDTH, GetBottomBarTop()); }
 static RECT GetBottomBarRect() { return MakeUiRect(0, GetBottomBarTop(), WINDOW_WIDTH, WINDOW_HEIGHT); }
 
+// 底栏「● 当前方案：<字体>」提示（可点击：定位到列表中该字体）。
+static RECT GetBottomBarAppliedRect() {
+    return MakeUiRect(SF(8), GetBottomBarTop(), WINDOW_WIDTH / 2, WINDOW_HEIGHT);
+}
+
 // 列表行卡片矩形（行高 ITEM_HEIGHT，卡片下方留 5px 行间距）。
 static RECT GetListRowRect(int visibleRow) {
     int top = GetListTop() + visibleRow * ITEM_HEIGHT;
@@ -108,15 +113,15 @@ static RECT GetPreviewBoxRect() {
 }
 static RECT GetPreviewSampleRect() { return GetPreviewBoxRect(); }
 
-// 预览区标题行右侧的字号 -/数值/+ 控件。
+// 预览区标题行右侧的字号 -/数值/+ 控件（水平改 SF 基准并加宽，避免文字被裁切）。
 static RECT GetPreviewFontMinusRect() {
-    return MakeUiRect(WINDOW_WIDTH - 72, GetPreviewTop() + SF(6), WINDOW_WIDTH - 59, GetPreviewTop() + SF(20));
+    return MakeUiRect(WINDOW_WIDTH - SF(84), GetPreviewTop() + SF(5), WINDOW_WIDTH - SF(64), GetPreviewTop() + SF(19));
 }
 static RECT GetPreviewFontValueRect() {
-    return MakeUiRect(WINDOW_WIDTH - 52, GetPreviewTop() + SF(6), WINDOW_WIDTH - 30, GetPreviewTop() + SF(20));
+    return MakeUiRect(WINDOW_WIDTH - SF(62), GetPreviewTop() + SF(5), WINDOW_WIDTH - SF(34), GetPreviewTop() + SF(19));
 }
 static RECT GetPreviewFontPlusRect() {
-    return MakeUiRect(WINDOW_WIDTH - 23, GetPreviewTop() + SF(6), WINDOW_WIDTH - 10, GetPreviewTop() + SF(20));
+    return MakeUiRect(WINDOW_WIDTH - SF(32), GetPreviewTop() + SF(5), WINDOW_WIDTH - SF(10), GetPreviewTop() + SF(19));
 }
 
 static RECT GetScrollbarAreaRect() {

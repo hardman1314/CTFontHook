@@ -86,13 +86,19 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
         if (oldCharExtra != 0x80000000 && oldCharExtra != 0x7FFFFFFF)
             SetTextCharacterExtra(mem, oldCharExtra);
         SelectObject(mem, oldPreviewFont);
+    }
 
-        // 预览框左下角：检测/选择信息
+    // 预览底行：左侧「点击文字编辑预览」（可点击进入行内编辑），右侧当前字体名 + 下拉箭头。
+    {
+        HFONT footFont = GetCachedPickerFont(L"Microsoft YaHei", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
+        HGDIOBJ oldFootFont = SelectObject(mem, footFont);
+        SetTextColor(mem, g_previewSampleHovered ? COL_ACCENT : COL_TEXT_FAINT);
+        RECT editHintRc = { SF(13), GetPreviewBottomRowTop(), rc.right / 2, GetBottomBarTop() };
+        DrawTextW(mem, L"\x70B9\x51FB\x6587\x5B57\x7F16\x8F91\x9884\x89C8", -1, &editHintRc,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);  // 点击文字编辑预览
+
+        // 右侧紧跟：游戏/选择/序号信息（由预览框内迁出，避免与样例文字重叠）。
         {
-            HFONT infoFont = GetCachedPickerFont(L"Microsoft YaHei", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
-            HGDIOBJ oldInfoFont = SelectObject(mem, infoFont);
-            SetTextColor(mem, COL_TEXT_HINT);
-
             const wchar_t* detName = L"\x672A\x77E5";  // 未知
             for (int i = 0; i < g_charsetCount; i++) {
                 if (g_charsets[i].value == Config::DetectedCharset) {
@@ -105,22 +111,30 @@ static void PaintPreviewPanel(HDC mem, const RECT& rc)
                 detName, (int)Config::DetectedCharset,
                 g_charsets[g_selectedCharset].label, (int)g_charsets[g_selectedCharset].value,
                 g_selectedIndex + 1, itemCount);
-            RECT infoRc = { boxRc.left + SF(14), boxRc.bottom - SF(13),
-                boxRc.right - SF(14), boxRc.bottom - SF(3) };
-            DrawTextW(mem, infoBuf, -1, &infoRc,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
-            SelectObject(mem, oldInfoFont);
-        }
-    }
 
-    // 预览底行：左侧「点击文字编辑预览」（可点击进入行内编辑），右侧当前字体名 + 下拉箭头。
-    {
-        HFONT footFont = GetCachedPickerFont(L"Microsoft YaHei", SF(7), 0, FW_NORMAL, DEFAULT_CHARSET);
-        HGDIOBJ oldFootFont = SelectObject(mem, footFont);
-        SetTextColor(mem, g_previewSampleHovered ? COL_ACCENT : COL_TEXT_FAINT);
-        RECT editHintRc = { SF(13), GetPreviewBottomRowTop(), rc.right / 2, GetBottomBarTop() };
-        DrawTextW(mem, L"\x70B9\x51FB\x6587\x5B57\x7F16\x8F91\x9884\x89C8", -1, &editHintRc,
-            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);  // 点击文字编辑预览
+            const wchar_t* editHint = L"\x70B9\x51FB\x6587\x5B57\x7F16\x8F91\x9884\x89C8";  // 点击文字编辑预览
+            SIZE hintSz = {};
+            GetTextExtentPoint32W(mem, editHint, 8, &hintSz);
+
+            // 按右端「当前字体」提示的实际宽度预留空间，信息在剩余区域内左对齐（过长则省略）。
+            std::wstring curWidthText = g_appliedFont.empty()
+                ? std::wstring(L"\xFF08\x672A\x5E94\x7528\xFF09") : g_appliedFont;
+            curWidthText += L"  \x2304";
+            HFONT mFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
+            HGDIOBJ oldMF = SelectObject(mem, mFont);
+            SIZE curSz = {};
+            GetTextExtentPoint32W(mem, curWidthText.c_str(), (int)curWidthText.size(), &curSz);
+            SelectObject(mem, oldMF);
+
+            int infoLeft = SF(13) + hintSz.cx + SF(14);
+            int infoRight = GetCurrentFontHintRect().right - curSz.cx - SF(12);
+            if (infoRight > infoLeft) {
+                RECT infoRc = { infoLeft, GetPreviewBottomRowTop(), infoRight, GetBottomBarTop() };
+                SetTextColor(mem, COL_TEXT_HINT);
+                DrawTextW(mem, infoBuf, -1, &infoRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+            }
+        }
         SelectObject(mem, oldFootFont);
 
         HFONT hintFont = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);

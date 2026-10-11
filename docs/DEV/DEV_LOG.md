@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-10-11　选择器窗口优化（图标 / 标题 / 面积 / 页脚 / 缩放控件 / 整体缩放 / 定位）
+
+- **任务**：主人真机使用字体选择器后提出 7 条体验问题，一次性修复：
+  ① 窗口/任务栏图标沿用旧图标；② 顶部「指南」药丸与标题重合；③ 列表区偏高、预览区偏矮；
+  ④ 预览框底部「游戏/选择/序号」信息与样例文字重叠；⑤ 预览标题右侧 A−/数值/A+ 控件重叠、文字被裁；
+  ⑥ 拖拽缩放只拉大外框、内容不缩放；⑦ 底栏「当前方案：<字体>」不可点击定位。
+- **改动文件**（7 改 + 2 新建，全部在计划内）：
+  - `src/res/app.ico`（**新建**）：复制自 `installer/app.ico`（7 尺寸多帧 ICO）。
+  - `src/CTFontHook.rc`：追加 `2001 ICON "res\\app.ico"`。
+  - `src/ui/internal/state/font_picker_state.cppinc`：新增 `APP_ICON_RESOURCE_ID=2001`、
+    `g_bottomAppliedHovered`、设计基准 `DESIGN_BASE_WIDTH/HEIGHT=410/724`、最小 `340×600`；
+    `PREVIEW_HEIGHT 136→164`。
+  - `src/ui/internal/state/font_picker_layout_geometry.cppinc`：`GetHeaderPillRect` 改 SF 化并右移；
+    新增 `GetBottomBarAppliedRect`；A−/Value/A+ 三矩形 SF 化重排。
+  - `src/ui/internal/font_picker_lifecycle.cppinc`：`wc.hIcon/hIconSm` 载入 + 创建后补 `WM_SETICON`；
+    初始尺寸改为「按 410×724 等比夹取到可用屏」。
+  - `src/ui/internal/input/font_picker_wndproc.cppinc`：新增 `HandleBottomAppliedClick`、
+    `SizeWindowForUiScale`；新增 `WM_SIZING` 锁定 410:724；`WM_SIZE` 反推 `g_uiScale`；
+    Ctrl+滚轮改缩放后同步窗口大小；底栏悬停态与点击派发接线。
+  - `src/ui/internal/paint/font_picker_paint_preview.cppinc`：预览框内信息块删除，
+    迁至页脚行右侧「动态剩余宽度」绘制，并预留右侧「当前字体」提示宽度。
+  - `src/ui/internal/paint/font_picker_paint_status.cppinc`：底栏「当前方案」悬停变强调色。
+  - `docs/DEV/features/选择器窗口优化-图标与布局.md`（**新建**）：本批档案。
+- **明确不改**：列表单击仍只选中（P0-1 交互）、预览 A± 仍不落盘、各配置键/注入/热键协议/导出表零改动。
+- **验证**：`scripts\1-一键测试.bat` → **4/4 通过**（x64 / Win32 DLL + 安装器 + 双架构导出校验）；
+  Win32 `933376 → 589824`（+≈99KB 系内嵌 ICO）。坐标核算：药丸 `135..188` vs 标题止于 `125`；
+  A−/Value/A+ = `408..433`/`435..470`/`473..500`；默认缩放 1.25 下列表可见 5 行。
+- **偏差 / 限制**：
+  - 缩放采用 **reduced model**：`SF()` 内容随缩放变化，各定高区仍为设计稿原始像素，
+    列表区吸收剩余高度。**未采用「全量等比」**——那会让列表从 5 行掉到约 3 行，与主人「稍微减小列表」相悖。
+  - **真机验证未做**：本机为无 GUI 构建环境，7 项观感/手感均需主人真机确认。
+  - 可调常量集中在 `font_picker_state.cppinc` 顶部（尺寸/比例）与 `layout_geometry` 的矩形定义。
+
+---
+
 ## 2026-10-11　安装器窗口「浅色主题复刻 + 中文名 + 图标」
 
 - **任务**：优化 CTFontHook-Setup 安装器窗口——① 提升易用性；② 按字体选择器的设计语言改为**浅色主题**

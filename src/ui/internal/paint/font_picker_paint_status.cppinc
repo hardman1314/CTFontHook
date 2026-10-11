@@ -44,7 +44,9 @@ static void PaintBottomBar(HDC mem, const RECT& rc)
 
     HFONT font = GetCachedPickerFont(L"Microsoft YaHei", SF(9), 0, FW_NORMAL, DEFAULT_CHARSET);
     HGDIOBJ oldFont = SelectObject(mem, font);
-    SetTextColor(mem, COL_TEXT_DIM);
+    // 悬停且已有方案时高亮，提示「点击可定位到列表中该字体」。
+    bool appliedClickable = g_bottomAppliedHovered && !g_appliedFont.empty();
+    SetTextColor(mem, appliedClickable ? COL_ACCENT : COL_TEXT_DIM);
     std::wstring curText = L"\x5F53\x524D\x65B9\x6848\xFF1A";  // 当前方案：
     curText += g_appliedFont.empty() ? L"\xFF08\x672A\x5E94\x7528\xFF09" : g_appliedFont;
     RECT curRc = { SF(23), bar.top, rc.right - SF(60), bar.bottom };

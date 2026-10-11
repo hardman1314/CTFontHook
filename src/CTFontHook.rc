@@ -2,3 +2,7 @@
 // 资源 ID 101 与 ui/internal/state/font_picker_state.cppinc 的 LIST_BG_RESOURCE_ID 一致。
 
 101 RCDATA "res\\list_bg.png"
+
+// 选择器窗口/任务栏图标（多尺寸 ICO）。
+// 资源 ID 2001 与 ui/internal/state/font_picker_state.cppinc 的 APP_ICON_RESOURCE_ID 一致。
+2001 ICON "res\\app.ico"

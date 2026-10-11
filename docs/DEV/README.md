@@ -18,6 +18,21 @@
 | `BACKUP.md` | 备份/回退使用说明（面向非技术使用者） | 脚本流程变化时更新 |
 | `features/` | 单个功能的设计档案（一个功能一个文件） | 开始/推进某个功能时 |
 
+## 一键脚本（scripts/）
+
+| 脚本 | 作用 |
+| --- | --- |
+| `0-环境自检.bat` | 检查编译工具链、依赖、工程文件、Git 是否齐备（只读） |
+| `1-一键测试.bat` | 编译 32/64 位 Release + 校验产物与导出表 |
+| `2-一键打包.bat` | 编译 + 加壳 + 生成 `dist\` 下可分发 zip |
+| `3-一键备份.bat` | 提交改动并打 `backup-<时间>` 标签 |
+| `4-一键回退.bat` | 从存档点中选一个回退（回退前自动存 `safety-<时间>`） |
+| `tools\to_gbk.ps1` | 把 `scripts\*.bat` 由 UTF-8 转回 GBK + CRLF（见下） |
+
+> **编码约定（重要）**：`scripts\` 下所有 `.bat` 必须是 **GBK(codepage 936) + CRLF**。
+> cmd.exe 在 `chcp 65001` 下读取多行中文批处理会读取错位。改脚本流程：
+> 以 UTF-8 编辑 → 运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\tools\to_gbk.ps1`。
+
 ## 工作约定（每个任务一套流程）
 
 1. 动手前：先读 `SESSION_HANDOFF.md` 和 `ROADMAP.md`，确认当前该做什么。
